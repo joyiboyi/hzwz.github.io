@@ -1,0 +1,320 @@
+I"-7<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在渗透测试中，当我们获得了用户的邮箱凭据，需要对邮箱内容进行分析时，可以选择通过IMAP协议实现自动化来提高效率。</p>
+
+<p>本文以Exchange为例，介绍通过IMAP协议下载邮件和附件的方法，开源代码，分享脚本编写细节。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>基础知识</li>
+  <li>Exchange开启IMAP功能和登录日志</li>
+  <li>Python3实现细节</li>
+  <li>开源代码</li>
+</ul>
+
+<h2 id="0x02-基础知识">0x02 基础知识</h2>
+<hr />
+
+<h3 id="1imap">1.IMAP</h3>
+
+<p>全称是Internet Mail Access Protocol，即交互式邮件存取协议</p>
+
+<p>是一种邮件获取协议，可以从邮件服务器上获取邮件的信息</p>
+
+<p>使用端口143</p>
+
+<h3 id="2imap4_ssl">2.IMAP4_SSL</h3>
+
+<p>全称是IMAP over SSL，是IMAP协议基于SSL安全协议之上的一种变种协议</p>
+
+<p>继承了SSL安全协议的非对称加密的高度安全可靠性，可防止邮件泄露，也是用来接收邮件的</p>
+
+<p>使用端口993</p>
+
+<h3 id="3python3-imaplib库">3.Python3 imaplib库</h3>
+
+<p>官方文档：</p>
+
+<p>https://docs.python.org/3/library/imaplib.html</p>
+
+<p>该模块定义了三个类，IMAP4，IMAP4_SSL和 IMAP4_stream</p>
+
+<p>为了提高安全性，我们通常使用用于安全连接的子类<a href="https://docs.python.org/3/library/imaplib.html#imaplib.IMAP4">IMAP4_SSL</a></p>
+
+<h3 id="4python3-email库">4.Python3 email库</h3>
+
+<p>官方文档：</p>
+
+<p>https://docs.python.org/3/library/email.html</p>
+
+<p>当我们使用imaplib库读取邮件时，需要使用email库将接收的消息转换为EmailMessage对象，可以更加方便的对邮件内容进行处理</p>
+
+<h2 id="0x03-exchange开启imap功能和登录日志">0x03 Exchange开启IMAP功能和登录日志</h2>
+<hr />
+
+<p>默认情况下，Exchange中未启用IMAP4客户端连接</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/clients/pop3-and-imap4/configure-imap4?view=exchserver-2019</p>
+
+<p>开启方法如下：</p>
+
+<p>1.启动IMAP4服务，并将服务配置为自动启动</p>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Start-Service MSExchangeIMAP4; Start-Service MSExchangeIMAP4BE
+Set-Service MSExchangeIMAP4 -StartupType Automatic; Set-Service MSExchangeIMAP4BE -StartupType Automatic
+</code></pre></div></div>
+
+<p>2.配置IMAP4设置</p>
+
+<p>格式如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Set-ImapSettings -ExternalConnectionSettings "&lt;FQDN1&gt;:&lt;TCPPort1&gt;:&lt;SSL | TLS | blank&gt;", "&lt;FQDN2&gt;:&lt;TCPPort2&gt;:&lt;SSL | TLS | blank&gt;"...  -X509CertificateName &lt;FQDN&gt; [-SSLBindings "&lt;IPv4Orv6Address1&gt;:&lt;TCPPort1&gt;","&lt;IPv4Orv6Address2&gt;:&lt;TCPPort2&gt;"...] [-UnencryptedOrTLSBindings "&lt;IPv4Orv6Address1&gt;:&lt;TCPPort1&gt;","&lt;IPv4Orv6Address2&gt;:&lt;TCPPort2&gt;"...]
+</code></pre></div></div>
+
+<p>Powershell命令实例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Set-ImapSettings -ExternalConnectionSettings "mail.test.com:993:SSL","mail.test.com:143:TLS" -X509CertificateName mail.test.com
+</code></pre></div></div>
+
+<p>3.重新启动IMAP4服务</p>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Restart-Service MSExchangeIMAP4; Restart-Service MSExchangeIMAP4BE
+</code></pre></div></div>
+
+<p>4.查看配置：</p>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-Service MSExchangeIMAP4; Get-Service MSExchangeIMAP4BE
+Get-ImapSettings | Format-List *ConnectionSettings,*Bindings,X509CertificateName
+</code></pre></div></div>
+
+<p>使用邮箱用户登录OWA，选择<code class="language-plaintext highlighter-rouge">Settings</code>-&gt;<code class="language-plaintext highlighter-rouge">Options</code>，能够看到IMAP配置，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-1-22/2-1.png" alt="Alt text" /></p>
+
+<p>默认情况下，Exchange中未启用日志功能</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/configure-protocol-logging-for-pop3-and-imap4-exchange-2013-help</p>
+
+<p>开启方法如下：</p>
+
+<p>1.开启日志功能</p>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Set-ImapSettings -Server "CAS01" -ProtocolLogEnabled $true
+</code></pre></div></div>
+
+<p>2.重启服务</p>
+
+<p>重新启动IMAP4服务，Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Restart-Service MSExchangeIMAP4; Restart-Service MSExchangeIMAP4BE
+</code></pre></div></div>
+
+<p>3.查看配置信息：</p>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-ImapSettings | Format-List ProtocolLogEnabled,LogFileLocation,LogPerFileSizeQuota,LogFileRollOverSettings
+</code></pre></div></div>
+
+<p>默认的日志保存路径为：<code class="language-plaintext highlighter-rouge">C:\Program Files\Microsoft\Exchange Server\V15\Logging\Imap4</code></p>
+
+<h2 id="0x04-python3实现细节">0x04 Python3实现细节</h2>
+<hr />
+
+<h3 id="测试代码1">测试代码1</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import imaplib
+M = imaplib.IMAP4_SSL('192.168.1.1','993')
+M.login('User1', 'Password')
+data = M.list()
+print(data)
+M.logout()
+</code></pre></div></div>
+
+<p>以上代码用来获得所有邮箱文件夹对应的名称</p>
+
+<p>(1)<code class="language-plaintext highlighter-rouge">M.list()</code>用来列出邮箱文件夹的名称</p>
+
+<p><strong>注：</strong></p>
+
+<p>不同的邮件系统只有收件箱名称统一默认为INBOX，发件箱的名称一般不同，例如Exchange的发件箱名称为<code class="language-plaintext highlighter-rouge">"Sent Items"</code></p>
+
+<h3 id="测试代码2">测试代码2</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import imaplib
+M = imaplib.IMAP4_SSL('192.168.1.1','993')
+M.login('User1', 'Password')
+M.select('INBOX')
+typ, data = M.search(None, 'ALL')
+for num in data[0].split():
+    typ, data = M.fetch(num, '(RFC822)')
+    print('Message %s\n%s\n' % (num, data[0][1]))
+M.close()
+M.logout()
+</code></pre></div></div>
+
+<p>以上代码用来读取收件箱所有邮件的内容</p>
+
+<p>(1)<code class="language-plaintext highlighter-rouge">M.select('INBOX')</code>表示选择收件箱</p>
+
+<p>如果换成读取Exchange的发件箱，对应的代码为<code class="language-plaintext highlighter-rouge">M.select('"Sent Items"')</code></p>
+
+<p>如果添加参数2为False，表示设置了只读标志，不允许修改邮箱，示例：<code class="language-plaintext highlighter-rouge">M.select('"Sent Items"',False)</code></p>
+
+<p>(2)<code class="language-plaintext highlighter-rouge">typ, data = M.search(None, 'ALL')</code>中，<code class="language-plaintext highlighter-rouge">None</code>表示使用默认的ASCII编码，<code class="language-plaintext highlighter-rouge">ALL</code>表示搜索条件为所有邮件</p>
+
+<p>如果想要筛选出发件人为<code class="language-plaintext highlighter-rouge">user2</code>的邮件，对应语句为<code class="language-plaintext highlighter-rouge">typ, msgnums = M.search(None, '(FROM "user2")')</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">M.search()</code>返回的结果为邮件的序列号，例如我的测试环境下，收件箱有9个邮件，此时返回的结果为：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[b'1 2 3 4 5 6 7 8 9']
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>这里需要区分邮件序列号和UID</p>
+
+<p>邮件序列号为从1开始累加的数列，UID是区分邮件的唯一标识</p>
+
+<p>获得邮件序列号同UID对应关系可使用以下代码:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import imaplib
+M = imaplib.IMAP4_SSL('192.168.1.1','993')
+M.login('User1', 'Password')
+M.select('INBOX')
+typ, data = M.search(None, 'ALL')
+for num in data[0].split():
+    typ, data = M.fetch(num, 'UID')
+    print(data)
+M.close()
+M.logout()
+</code></pre></div></div>
+
+<p>(3)<code class="language-plaintext highlighter-rouge">M.fetch(num, '(RFC822)')</code>用来提取邮件消息</p>
+
+<p>参数1<code class="language-plaintext highlighter-rouge">num</code>表示提取的邮件序列号</p>
+
+<p>参数1支持同时提取多个连续邮件消息，例如同时提取邮件序列号为2-5的邮件命令为<code class="language-plaintext highlighter-rouge">M.fetch('2:5', '(RFC822)')</code></p>
+
+<p>参数2<code class="language-plaintext highlighter-rouge">'(RFC822)'</code>表示数据项名称，这里’(RFC822)’等同于<code class="language-plaintext highlighter-rouge">BODY[]</code>，只返回邮件体文本格式和大小的摘要信息</p>
+
+<p>如果只想获得邮件头部的内容，可以使用以下代码：</p>
+
+<p><code class="language-plaintext highlighter-rouge">M.fetch(num, 'BODY[HEADER]')</code></p>
+
+<p>如果只想获得邮件体的内容，可以使用以下代码：</p>
+
+<p><code class="language-plaintext highlighter-rouge">M.fetch(num, 'BODY[TEXT]')</code></p>
+
+<p>(4)<code class="language-plaintext highlighter-rouge">M.close()</code>用来关闭当前选择的邮箱</p>
+
+<p>在执行完<code class="language-plaintext highlighter-rouge">M.select()</code>后使用</p>
+
+<h3 id="测试代码3">测试代码3</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import imaplib
+import email
+M = imaplib.IMAP4_SSL('192.168.1.1','993')
+M.login('User1', 'Password')
+M.select('INBOX')
+typ, data = M.search(None, 'ALL')
+for num in data[0].split():
+	typ, data = M.fetch(num, '(RFC822)')
+	msg = email.message_from_bytes(data[0][1])
+	for part in msg.walk():
+		if part.get('Content-Disposition'):
+			fileName = part.get_filename()
+			if bool(fileName):
+				with open(fileName,'wb') as f:
+					f.write(part.get_payload(decode=True))
+M.close()
+M.logout()
+</code></pre></div></div>
+
+<p>以上代码用来保存收件箱所有邮件的附件</p>
+
+<p>(1)<code class="language-plaintext highlighter-rouge">msg = email.message_from_bytes(data[0][1])</code>用来将数据转换为email对象</p>
+
+<p>(2)<code class="language-plaintext highlighter-rouge">msg.walk()</code>用来遍历邮件对象的所有部分</p>
+
+<p>(3)<code class="language-plaintext highlighter-rouge">part.get('Content-Disposition')</code>用来获得对应字段名<code class="language-plaintext highlighter-rouge">Content-Disposition</code>的字段值</p>
+
+<p>如果邮件包含附件，将会带有字段<code class="language-plaintext highlighter-rouge">Content-Disposition</code>，通过这个判断邮件是否包含附件</p>
+
+<p>(4)<code class="language-plaintext highlighter-rouge">part.get_filename()</code>用来获得信息头当中<code class="language-plaintext highlighter-rouge">Content-Disposition</code>字段当中名为<code class="language-plaintext highlighter-rouge">filename</code>的参数值，对应附件的名称</p>
+
+<p>(5)<code class="language-plaintext highlighter-rouge">part.get_payload(decode=True)</code>用来获得附件内容</p>
+
+<p>由于附件内容是以Base64编码的形式存储，所以在读取时需要加入参数<code class="language-plaintext highlighter-rouge">decode=True</code>作Base64解码</p>
+
+<h3 id="测试代码4">测试代码4</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import imaplib
+import email
+M = imaplib.IMAP4_SSL('192.168.1.1','993')
+M.login('User1', 'Password')
+M.select('INBOX')
+typ, data = M.search(None, 'ALL')
+for num in data[0].split():
+	typ, data = M.fetch(num, '(RFC822)')
+	msg = email.message_from_bytes(data[0][1])
+	with open(num.decode('utf8') + '.eml','wb') as f:
+		f.write(bytes(msg))
+M.close()
+M.logout()
+</code></pre></div></div>
+
+<p>以上代码用来逐个保存收件箱的所有邮件，以邮件序列号为名称，后缀名为eml，可以使用Outlook打开</p>
+
+<h2 id="0x05-开源代码">0x05 开源代码</h2>
+<p>–</p>
+
+<p>我已经将完整的代码上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/imapManage.py</p>
+
+<p>代码支持以下功能：</p>
+
+<ul>
+  <li>查看文件夹配置</li>
+  <li>从收件箱下载所有附件</li>
+  <li>从发件箱下载所有附件</li>
+  <li>从收件箱下载所有邮件</li>
+  <li>从发件箱下载所有邮件</li>
+</ul>
+
+<p>在下载文件时，首先以邮箱用户名创建文件夹，保存对应用户下载的文件</p>
+
+<p>默认支持通过IMAP4_SSL访问Exchange邮件，对于不同的邮件系统，收件箱没有区别，发件箱的名称有所不同。发件箱的名称可以通过<code class="language-plaintext highlighter-rouge">CheckConfig</code>命令查询文件夹对应的名称进行修改</p>
+
+<p>代码修复了附件名称因为编码问题无法识别的bug</p>
+
+<p>为了便于记录邮件访问过程，加入了日志记录功能</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文以Exchange为例，介绍通过IMAP协议下载邮件和附件的方法，开源代码imapManage.py，分享脚本编写细节。对于其他邮件系统，可以参照此代码只需要修改发件箱的名称即可。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

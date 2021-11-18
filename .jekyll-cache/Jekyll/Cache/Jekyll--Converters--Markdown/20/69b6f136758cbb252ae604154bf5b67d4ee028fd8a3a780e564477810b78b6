@@ -1,0 +1,401 @@
+I"�4<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Application Compatibility是一个框架，主要用来解决应用程序在新版Windows系统上的兼容性问题。然而在渗透测试中它却有着更多的用处，本文将对公开资料进行整理，介绍在渗透测试中的具体利用技术，帮助大家更好的认识它，防御它。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<h3 id="shim">Shim：</h3>
+
+<p>相当于是在应用程序和Windows API之间的逻辑层。</p>
+
+<p>当应用程序创建进程的时候，WindowsLoader首先会检查sysmain.sdb（位于%windir%\AppPatch\），如果存在已注册的sdb文件，IAT将被重定向到Shim，实现功能替换。</p>
+
+<p>本文将介绍以下内容：</p>
+
+<ul>
+  <li>创建Shim文件</li>
+  <li>实际利用方法</li>
+  <li>相关开源工具</li>
+  <li>检测和防御</li>
+</ul>
+
+<h2 id="0x02-创建shim文件">0x02 创建Shim文件</h2>
+<hr />
+
+<h3 id="1microsoft-application-compatibility-toolkitact">1.Microsoft Application Compatibility Toolkit(ACT)</h3>
+
+<p><strong>下载地址：</strong></p>
+
+<p>https://www.microsoft.com/en-us/download/details.aspx?id=7352</p>
+
+<p>默认修复方式种类个数为365</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/0-1.png" alt="Alt text" /></p>
+
+<p>启动时加入<code class="language-plaintext highlighter-rouge">/x</code>参数可获得更多修复方式，总数807</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/0-2.png" alt="Alt text" /></p>
+
+<p>根据提示创建后生成.sdb文件，需要安装使其生效</p>
+
+<p>可在Microsoft Application Compatibility Toolkit中直接选择安装，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/1-1.png" alt="Alt text" /></p>
+
+<h2 id="0x03-实际利用方法">0x03 实际利用方法</h2>
+<hr />
+
+<h3 id="1hiding-in-the-registry">1.Hiding in the Registry</h3>
+
+<p>选择<code class="language-plaintext highlighter-rouge">VirtualRegistry</code></p>
+
+<p>Command line填入：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ADDREDIRECT(HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run^HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunHidden)
+</code></pre></div></div>
+
+<p>安装shim</p>
+
+<p>启动regedit</p>
+
+<p><code class="language-plaintext highlighter-rouge">HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run</code>下键值无法查看,如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/0-3.png" alt="Alt text" /></p>
+
+<p>但在cmd下执行如下命令可以查看：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg query HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run
+</code></pre></div></div>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/0-4.png" alt="Alt text" /></p>
+
+<h3 id="2hiding-in-the-file-system">2.Hiding in the File System</h3>
+
+<p>选择<code class="language-plaintext highlighter-rouge">CorrectFilePaths</code></p>
+
+<p>Command line填入：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>c:\test\;c:\users
+</code></pre></div></div>
+
+<p>Module name 填入<code class="language-plaintext highlighter-rouge">*.exe</code>,点击add</p>
+
+<p>安装shim</p>
+
+<p>启动cmd.exe，无法查看c:\test下的文件</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/0-5.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>类似的还有<code class="language-plaintext highlighter-rouge">VirtualizeDeleteFile</code> 和<code class="language-plaintext highlighter-rouge">RedirectShortcut</code></p>
+
+<h3 id="3persistence">3.Persistence</h3>
+
+<p>可供选择的Fix有：</p>
+
+<ul>
+  <li>InjectDll</li>
+  <li>LoadLibraryRedirect</li>
+  <li>RedirectShortcut</li>
+  <li>RedirectEXE</li>
+  <li>ShimViaEAT</li>
+  <li>LoadLibraryfromCWD</li>
+  <li>Hijacking DLL</li>
+</ul>
+
+<h3 id="4disable-security-features-of-the-os">4.Disable Security Features of the OS</h3>
+
+<p>可供选择的Fix有：</p>
+
+<ul>
+  <li>Disable NX</li>
+  <li>Disable ASLR</li>
+  <li>DisableSEH</li>
+  <li>Prevent the Loading of DLLs</li>
+  <li>Disable Windows Resource Protection</li>
+  <li>Elevate to Administrator</li>
+  <li>DisableWindowsDefender</li>
+  <li>DisableAdvancedRPCClientHardening</li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>以上思路参考自：</p>
+
+<p>http://www.irongeek.com/i.php?page=videos/derbycon3/4206-windows-0wn3d-by-default-mark-baggett</p>
+
+<p>http://sdb.tools/files/paper.pdf</p>
+
+<h2 id="0x04-安装和卸载shim">0x04 安装和卸载Shim</h2>
+<hr />
+
+<h3 id="1sdbinstexe">1.sdbinst.exe</h3>
+
+<p>用来安装和卸载.sdb文件</p>
+
+<p>微软官方提供，默认位于c:\windows\system32下，运行需要管理员权限</p>
+
+<p><strong>usage:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> -? - print this help text.
+ -p - Allow SDBs containing patches.
+ -q - Quiet mode: prompts are auto-accepted.
+ -u - Uninstall.
+ -g {guid} - GUID of file (uninstall only).
+ -n "name" - Internal name of file (uninstall only). 
+</code></pre></div></div>
+
+<p><strong>卸载：</strong></p>
+
+<p>sdbinst.exe -u -n “name”</p>
+
+<p>安装过程中sdbinst.exe做了如下操作：</p>
+
+<p>在如下注册表位置创建键值保存Shim信息：</p>
+
+<ul>
+  <li>HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Custom</li>
+  <li>HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\InstalledSDB</li>
+</ul>
+
+<p>将sdb文件复制到如下文件路径：</p>
+
+<ul>
+  <li>C:\Windows\AppPatch\Custom\</li>
+  <li>C:\Windows\AppPatch\Custom\Custom64\</li>
+</ul>
+
+<p>添加到已安装的应用程序列表中</p>
+
+<p>依次打开控制面板-程序-程序和功能-卸载程序，可看到安装的Shim名称</p>
+
+<h3 id="2sdb-explorer">2.sdb-explorer</h3>
+
+<p><strong>下载地址：</strong></p>
+
+<p>https://github.com/evil-e/sdb-explorer</p>
+
+<p>同样可用来安装.sdb文件，相比于sdbinst.exe多了如下特征：</p>
+
+<ul>
+  <li>源代码开源</li>
+  <li>支持In-Memory patch</li>
+  <li>安装过程不将sdb文件复制到C:\Windows\AppPatch\Custom\下</li>
+  <li>安装过程不在已安装的应用程序列表中显示安装的Shim名称</li>
+</ul>
+
+<p><strong>usage:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Print full sdb tree
+  sdb-explorer.exe -t filename.sdb 
+
+Print patch details
+  sdb-explorer.exe [-i] -p filename.sdb (patch | patchid | patchref | patchbin)
+     -i - create IDAPython Script (optional)
+
+Print patch details for checksum
+  sdb-explorer.exe [-i] -s filename.sdb
+
+Create file containing the leaked memory
+  sdb-explorer.exe -l filename.sdb
+
+Print Match Entries
+  sdb-explorer.exe -d filename.sdb
+
+Create Patch From file
+  sdb-explorer.exe -C config.dat [-o filename.sdb]
+
+Register sdb file
+  sdb-explorer.exe -r filename.sdb [-a application.exe]
+
+Display usage
+  sdb-explorer.exe -h
+</code></pre></div></div>
+
+<p>演示如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/1-2.png" alt="Alt text" /></p>
+
+<p>执行以下命令注册sdb文件：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sdb-explorer.exe -r C:\Users\a\Desktop\test1.sdb -a putty.exe
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>-a的参数指定程序的名称，不能填入程序的绝对路径</p>
+
+<p>通过sdb-explorer.exe注册的sdb文件无法通过sdbinst.exe来删除，会显示sbd文件不存在，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/1-3.png" alt="Alt text" /></p>
+
+<p>卸载可通过删除注册表键值的方式实现</p>
+
+<p><strong>注：</strong></p>
+
+<p>通过sdb-explorer可以创建一个In-Memory patch的shim，接着编译成sdb文件，进而安装使用，关于In-Memory patch的学习心得将在以后分享</p>
+
+<p><strong>In-Memory patch：</strong></p>
+
+<ul>
+  <li>可以替换或写入内存中的某个区域的任意字节</li>
+  <li>可用来绕过应用程序白名单</li>
+</ul>
+
+<h2 id="0x05-查看shim信息">0x05 查看Shim信息</h2>
+<hr />
+
+<h3 id="1sdb2xml">1.sdb2xml</h3>
+
+<p>从.sdb文件提取出xml格式的数据，可用来分析sdb文件</p>
+
+<p><strong>作者：</strong></p>
+
+<p>Heath Stewart</p>
+
+<p><strong>下载地址：</strong></p>
+
+<p>https://blogs.msdn.microsoft.com/heaths/2007/11/03/shim-database-to-xml/</p>
+
+<p><strong>usage:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sdb2xml sdb [-out report] [-base64 | -extract] [-?]
+
+  sdb          Path to the shim database to process.
+  -base64      Base-64 encode data in the XML report.
+  -extract     Extract binary data to current or report directory.
+  -out report  Path to the XML file to generate; otherwise, output to console.
+</code></pre></div></div>
+
+<p>如图，使用sdb2xml查看test1.sdb文件中的数据</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/2-1.png" alt="Alt text" /></p>
+
+<h3 id="2compatibility-database-dumper-cdd">2.Compatibility Database Dumper (CDD)</h3>
+
+<p><strong>作者：</strong></p>
+
+<p>Alex Ionesceu</p>
+
+<p><strong>usage:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cdd.exe [-s][-e][-l][-f][-p][-d kernel-mode database file][-a usermode database file]
+
+ -s Show shims
+ -e Show executables
+ -l Show layers
+ -f Show flags
+ -p Show patches
+ -d Use Blocked Driver Database from this path
+ -a Use Application Compatibility Database from this path 
+</code></pre></div></div>
+
+<p><strong>参考地址：</strong></p>
+
+<p>http://www.alex-ionescu.com/?p=40</p>
+
+<p>但作者Alex Ionescu目前尚未将其开源</p>
+
+<h3 id="3shim-database-tool-sdb">3.Shim Database Tool (sdb)</h3>
+
+<p><strong>作者：</strong></p>
+
+<p>Jochen Kalmbach</p>
+
+<p><strong>下载地址：</strong></p>
+
+<p>http://blog.kalmbach-software.de/2010/02/22/the-shim-database/</p>
+
+<p><strong>注：</strong></p>
+
+<p>该工具源代码开源</p>
+
+<p><strong>Usage:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sdb.exe [-noids] [-match] [PathToShimDatabse] [PathToFileName]
+
+ -noids  Will prevent the output of the TagIds
+ -match  Will match the provided file with the installed databases
+         and displays the activated shims
+         In this case 'PathToFileName' is required
+
+NOTE: If no shim database path is provided,
+      the default database will be used.
+</code></pre></div></div>
+
+<p>从.sdb文件提取出xml格式的数据，演示如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/2-2.png" alt="Alt text" /></p>
+
+<p>显示指定程序是否被添加Shim，如图，找到putty.exe已被添加了一个Shim，guid为<code class="language-plaintext highlighter-rouge">8F9DA6E2-5A7C-41E1-B89F8B72D63DEBA8</code></p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-10-19/2-3.png" alt="Alt text" /></p>
+
+<h2 id="0x06-检测和防御">0x06 检测和防御</h2>
+<hr />
+
+<p><strong>禁用Shim的方法：</strong></p>
+
+<ul>
+  <li>
+    <p>英文系统：
+打开gpedit.msc，选择Administrative Templates-Windows Components-Application Compatibility-Turn off Application Compatibility Engine</p>
+  </li>
+  <li>
+    <p>中文系统：
+打开gpedit.msc，选择计算机配置-管理模板-Windows组件-应用程序兼容性-关闭应用程序兼容性引擎</p>
+  </li>
+</ul>
+
+<p>但不建议关闭Shim，原因如下：</p>
+
+<ul>
+  <li>导致EMET无法使用</li>
+  <li>无法更新补丁</li>
+</ul>
+
+<p><strong>检测和防御：</strong></p>
+
+<ul>
+  <li>AutoRuns不会检测到Shim</li>
+  <li>Shim的安装需要管理员权限，注意权限控制</li>
+  <li>监控特定注册表键值
+HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Custom
+HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\InstalledSDB</li>
+  <li>注意系统中未签名的sdb文件</li>
+  <li>使用检测脚本，如https://github.com/securesean/Shim-Process-Scanner和https://github.com/securesean/Shim-Process-Scanner-Lite</li>
+</ul>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文对Application Compatibility Shims在渗透测试中的相关技巧做了整理，希望对大家有所帮助。对于In-Memory patch，值得研究的还有很多，学习心得将在以后分享。</p>
+
+<p>更多关于Shim的研究资料可访问：</p>
+
+<p>http://sdb.tools/index.html</p>
+
+<hr />
+<p><strong>本文参考链接：</strong></p>
+
+<p>http://blacksunhackers.club/2016/08/post-exploitation-persistence-with-application-shims-intro/</p>
+
+<p>https://www.blackhat.com/docs/asia-14/materials/Erickson/Asia-14-Erickson-Persist-It-Using-And-Abusing-Microsofts-Fix-It-Patches.pdf</p>
+
+<p>http://www.irongeek.com/i.php?page=videos/derbycon3/4206-windows-0wn3d-by-default-mark-baggett</p>
+
+<p>http://sdb.io/erickson-codeblue.pdf</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+:ET

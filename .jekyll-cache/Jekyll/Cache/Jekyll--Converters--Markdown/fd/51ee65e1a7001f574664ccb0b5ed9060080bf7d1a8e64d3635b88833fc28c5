@@ -1,0 +1,311 @@
+I"�-<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/渗透技巧-导出Chrome浏览器中保存的密码">《渗透技巧——导出Chrome浏览器中保存的密码》</a>介绍了导出Chrome浏览器密码的原理和利用方法，本文将要对导出Firefox浏览器密码的原理和利用方法进行介绍，分析利用思路。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容:</p>
+
+<ul>
+  <li>密码保存方式</li>
+  <li>原理介绍</li>
+  <li>常用的导出工具</li>
+  <li>利用思路</li>
+</ul>
+
+<h2 id="0x02-密码保存方式">0x02 密码保存方式</h2>
+<hr />
+
+<p>正常用户在访问网站时，可选择使用Firefox浏览器保存登录的用户密码，用于下次登录的时候Firefox自动填写登录密码</p>
+
+<p>可以通过选择Logins and Passwords进行查看，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-1-9/2-1.png" alt="Alt text" /></p>
+
+<p>包括以下信息：</p>
+
+<ul>
+  <li>Website address</li>
+  <li>Username</li>
+  <li>Password</li>
+  <li>Created</li>
+  <li>Last modified</li>
+  <li>Last used</li>
+</ul>
+
+<p>所有记录保存在同一个文件中，具体位置为：<code class="language-plaintext highlighter-rouge">%APPDATA%\Mozilla\Firefox\Profiles\xxxxxxxx.default\</code></p>
+
+<p><strong>注:</strong></p>
+
+<p>xxxxxxxx为8位随机字母和数字的组合</p>
+
+<p>不同版本的Firefox保存记录的文件名称不同，具体区别如下：</p>
+
+<ul>
+  <li>Version大于等于32.0，保存记录的文件为logins.json</li>
+  <li>Version大于等于3.5，小于32.0，保存记录的文件为signons.sqlite</li>
+</ul>
+
+<p>更详细的文件说明可参考：</p>
+
+<p><code class="language-plaintext highlighter-rouge">http://kb.mozillazine.org/Profile_folder_-_Firefox</code></p>
+
+<p>不同版本Firefox的下载地址：</p>
+
+<p>http://ftp.mozilla.org/pub/firefox/releases/</p>
+
+<p>定位logins.json文件的位置可通过cmd命令实现，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dir %APPDATA%\Mozilla\Firefox\Profiles\*logins.json /s /b
+</code></pre></div></div>
+
+<p>查看logins.json文件的内容，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-1-9/2-2.png" alt="Alt text" /></p>
+
+<p>其中<code class="language-plaintext highlighter-rouge">encryptedUsername</code>和<code class="language-plaintext highlighter-rouge">encryptedPassword</code>是加密的内容，解密需要获得密钥文件(key和iv)并作3DES-CBC解密</p>
+
+<p>不同版本的Firefox密钥文件的位置不同，具体区别如下：</p>
+
+<ul>
+  <li>Version小于58.0.2，密钥文件为key3.db</li>
+  <li>Version大于等于58.0.2，密钥文件为key4.db</li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>key3.db和key4.db的版本区别来源于https://github.com/lclevy/firepwd/blob/master/firepwd.py#L236</p>
+
+<p>我在我的测试系统(Win7x64)下，安装64位Firefox，测试结果有所不同，具体如下：</p>
+
+<ul>
+  <li>如果Firefox的版本低于58.0，密钥文件为key3.db</li>
+  <li>如果Firefox为更高的版本，密钥文件为key4.db</li>
+</ul>
+
+<p>默认情况下，当前用户的权限可以查看Firefox浏览器中保存的所有密码，为了提高安全性，Firefox浏览器支持为保存的密码添加额外的保护：设置Master Password</p>
+
+<p>具体位置如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-1-9/3-1.png" alt="Alt text" /></p>
+
+<p>添加Master Password后，查看保存的密码需要额外输入Master Password</p>
+
+<p>解密流程：</p>
+
+<ol>
+  <li>读取密钥文件(key4.db或key3.db)，获得key和iv</li>
+  <li>读取记录文件(logins.json或signons.sqlite)的内容</li>
+  <li>如果未设置Master Password，使用key和iv对记录文件中的加密内容进行3DES-CBC解密
+如果设置Master Password，还需要获得明文形式的Master Password，才能进行解密</li>
+</ol>
+
+<h2 id="0x03-导出工具">0x03 导出工具</h2>
+<hr />
+
+<h3 id="1webbrowserpassviewexe">1.WebBrowserPassView.exe</h3>
+
+<p>下载地址：</p>
+
+<p>https://www.nirsoft.net/utils/web_browser_password.html</p>
+
+<p><strong>注：</strong></p>
+
+<p>这个版本不支持命令行操作</p>
+
+<p>命令行版本需要在另一地址下载：</p>
+
+<p>https://www.nirsoft.net/password_recovery_tools.html</p>
+
+<p>命令行下的使用方法：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>WebBrowserPassView.exe /LoadPasswordsFirefox 1 /shtml "c:\test\passwords.html"
+</code></pre></div></div>
+
+<p>结果保存在<code class="language-plaintext highlighter-rouge">c:\test\passwords.html</code>中，内容如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-1-9/4-1.png" alt="Alt text" /></p>
+
+<p>能获得完整的信息，包括以下类别：</p>
+
+<ul>
+  <li>Website address</li>
+  <li>Username</li>
+  <li>Password</li>
+  <li>Created</li>
+  <li>Last modified</li>
+  <li>Last used</li>
+</ul>
+
+<p>不支持使用Master Password解密</p>
+
+<h3 id="2firepwdpy">2.firepwd.py</h3>
+
+<p>地址：https://github.com/lclevy/firepwd</p>
+
+<p>需要安装依赖包：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>pip install pyasn1
+pip install pycrypto
+</code></pre></div></div>
+
+<p>能获得部分信息，包括以下类别：</p>
+
+<ul>
+  <li>Website address</li>
+  <li>Username</li>
+  <li>Password</li>
+</ul>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>firepwd.py -d C:\Users\a\AppData\Roaming\Mozilla\Firefox\Profiles\5a4gs6zh.default-release\
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-1-9/4-2.png" alt="Alt text" /></p>
+
+<p>支持使用Master Password解密</p>
+
+<p><strong>注：</strong></p>
+
+<p>我在自己的测试环境下，firepwd.py只支持key3.db的Master Passwor解密，key4.db的Master Passwor解密存在bug</p>
+
+<p>命令示例：</p>
+
+<p>使用测试文件mozilla_db(key3.db)，Master Password为<code class="language-plaintext highlighter-rouge">MISC*</code>，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python firepwd.py -p 'MISC*' -d mozilla_db/
+</code></pre></div></div>
+
+<p>结果正常，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-1-9/4-3.png" alt="Alt text" /></p>
+
+<p>我的测试环境(key4.db)，Master Password为<code class="language-plaintext highlighter-rouge">12345678</code>，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>firepwd.py -d C:\Users\a\AppData\Roaming\Mozilla\Firefox\Profiles\5a4gs6zh.default-release\ -p "12345678"
+</code></pre></div></div>
+
+<p>解密存在bug，提示口令失败，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-1-9/4-4.png" alt="Alt text" /></p>
+
+<h3 id="3lazagne">3.Lazagne</h3>
+
+<p>地址：</p>
+
+<p>https://github.com/AlessandroZ/LaZagne/</p>
+
+<p>导出Firefox浏览器的代码来自https://github.com/lclevy/firepwd</p>
+
+<p>结果同上，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-1-9/4-5.png" alt="Alt text" /></p>
+
+<h3 id="4firefox_decryptpy">4.firefox_decrypt.py</h3>
+
+<p>地址：https://github.com/unode/firefox_decrypt</p>
+
+<p>使用NSS(Network Security Services)进行解密，支持key3.db和key4.db的Master Password解密</p>
+
+<p>能获得部分信息，包括以下类别：</p>
+
+<ul>
+  <li>Website address</li>
+  <li>Username</li>
+  <li>Password</li>
+</ul>
+
+<p>测试结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-1-9/5-1.png" alt="Alt text" /></p>
+
+<p>在64位系统下，Python和Firefox的版本需要保持一致(同为32位或者同为64位)，否则会提示<code class="language-plaintext highlighter-rouge">ERROR - Problems opening 'nss3.dll' required for password decryption</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>在下一篇文章《通过Network Security Services导出Firefox浏览器中保存的密码》将要详细介绍通过NSS解密的细节</p>
+
+<h3 id="5firefox浏览器">5.Firefox浏览器</h3>
+
+<p>通过导出配置文件的方式实现</p>
+
+<p>需要获得记录文件(logins.json或signons.sqlite)和密钥文件(key4.db或key3.db)，保存在本地的文件夹<code class="language-plaintext highlighter-rouge">C:\test\data1</code></p>
+
+<p>使用-profile参数启动Firefox：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>firefox.exe -profile C:\test\data1
+</code></pre></div></div>
+
+<p>输入正确的Master Password，成功获得Firefox浏览器保存的信息</p>
+
+<h2 id="0x04-利用思路">0x04 利用思路</h2>
+<hr />
+
+<p>如果Firefox设置了Master Password，使用以上工具尝试导出密码时，结果会显示为0条结果，所以需要先读取记录文件确认是否存在记录</p>
+
+<p>可以通过查询注册表的方式获得Firefox的版本，这里可以参考之前开源的代码：https://github.com/3gstudent/ListInstalledPrograms/blob/master/ListInstalledPrograms.ps1</p>
+
+<p>不同版本的Firefox对应的记录文件不同，具体区别如下：</p>
+
+<ul>
+  <li>Version大于等于32.0，保存记录的文件为logins.json</li>
+  <li>Version大于等于3.5，小于32.0，保存记录的文件为signons.sqlite</li>
+</ul>
+
+<p>定位logins.json文件的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dir %APPDATA%\Mozilla\Firefox\Profiles\*logins.json /s /b
+</code></pre></div></div>
+
+<p>定位signons.sqlite文件的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dir %APPDATA%\Mozilla\Firefox\Profiles\*signons.sqlite /s /b
+</code></pre></div></div>
+
+<p>如果存在记录，接下来就可以使用工具尝试导出</p>
+
+<p>在离线导出时需要注意以下问题：</p>
+
+<h4 id="1未设置master-password">1.未设置Master Password</h4>
+
+<p>只需要获得记录文件(logins.json或signons.sqlite)和密钥文件(key4.db或key3.db)</p>
+
+<p>使用firepwd.py或者Firefox浏览器导入配置文件即可</p>
+
+<h4 id="2设置master-password">2.设置Master Password</h4>
+
+<p>(1)只获得记录文件(logins.json或signons.sqlite)和密钥文件(key4.db或key3.db)</p>
+
+<p>本地使用Firefox浏览器导入配置文件，输入Master Password</p>
+
+<p>(2)需要获得完整的配置文件</p>
+
+<p>需要包括以下文件：</p>
+
+<ul>
+  <li>%APPDATA%\Mozilla\Firefox\profiles.ini</li>
+  <li>%APPDATA%\Mozilla\Firefox\Profiles\xxxxxxxx.default\中的文件</li>
+</ul>
+
+<p>使用firefox_decrypt.py，命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>firefox_decrypt.py C:\test\data1
+</code></pre></div></div>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了导出Firefox浏览器密码的原理和利用方法，分析了使用Master Password解密时需要注意的细节</p>
+
+<p>对于普通用户来说，为了增加密码的安全性，建议设置Master Password</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

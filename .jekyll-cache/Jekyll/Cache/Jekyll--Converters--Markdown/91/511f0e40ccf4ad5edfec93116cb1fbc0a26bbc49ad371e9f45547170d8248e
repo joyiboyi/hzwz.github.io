@@ -1,0 +1,5 @@
+I"�<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>之前我在研究”Use SCT to Bypass Application Whitelisting Protection”的时候曾有过一个想法：在执行regsvr32命令注册COM组件的过程中，在注册表HKEY_CLASSES_ROOT\CLSID\下会同步创建COM组件的键值，并且classid的子项InprocServer32下会包含scrobj.dll的绝对路径，那么如果修改了子项InprocServer32的键值，能否实现对某些操作的劫持？</p>
+:ET

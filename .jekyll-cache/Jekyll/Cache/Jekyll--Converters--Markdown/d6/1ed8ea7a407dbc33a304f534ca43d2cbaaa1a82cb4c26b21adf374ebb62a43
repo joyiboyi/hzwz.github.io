@@ -1,0 +1,338 @@
+I"�-<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/SILENTTRINITY%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《SILENTTRINITY利用分析》</a>学习了C#利用IronPython引擎从内存加载payload的方法，我在byt3bl33d3r的GitHub上又看到了利用Boolang语言执行shellcode的代码，于是对这项技术做了研究。</p>
+
+<p>本文将要介绍Boolang语言的特点和用法，分析通过Boolang语言执行shellcode的优点，给出防御检测的建议。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>Boolang语言简介</li>
+  <li>Boolang语言的用法</li>
+  <li>通过Boolang语言执行shellcode的实现代码</li>
+  <li>利用分析</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-boolang语言简介">0x02 Boolang语言简介</h2>
+<hr />
+
+<p>学习资料：</p>
+
+<p>https://github.com/boo-lang/boo</p>
+
+<p>Boolang是面向对象的语言，结合了Python的语法，Ruby的功能以及C＃的速度和安全性</p>
+
+<p>具有如下特点：</p>
+
+<ul>
+  <li>语法非常接近Python，使用友好</li>
+  <li>静态类型，相比动态类型的Python，更加安全</li>
+  <li>可以扩充编译器，能够在.NET Framework或Mono上运行</li>
+  <li>代码开源</li>
+</ul>
+
+<h2 id="0x03-boolang语言的用法">0x03 Boolang语言的用法</h2>
+<hr />
+
+<p>首先需要下载编译后的Boolang文件，地址如下：</p>
+
+<p>https://github.com/boo-lang/boo/releases</p>
+
+<p>文件中包括以下三个可执行程序：</p>
+
+<ol>
+  <li>booi.exe，用作执行脚本</li>
+  <li>booish.exe，实时编译程序，便于测试代码</li>
+  <li>booc.exe，用作编译脚本</li>
+</ol>
+
+<p>具体用法如下：</p>
+
+<h3 id="1使用booiexe执行boolang脚本">1.使用booi.exe执行Boolang脚本</h3>
+
+<p>test.boo的内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>print "Hello, World!"
+</code></pre></div></div>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>booi.exe test.boo
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-9/2-1.png" alt="Alt text" /></p>
+
+<h3 id="2使用booishexe实时编译">2.使用booish.exe实时编译</h3>
+
+<p>启动booish.exe，在命令行输入如下代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>print "Hello, World!"
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-9/2-2.png" alt="Alt text" /></p>
+
+<h3 id="3使用boocexe编译boolang脚本">3.使用booc.exe编译Boolang脚本</h3>
+
+<p>test.boo的内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>print "Hello, World!"
+</code></pre></div></div>
+
+<p>命令如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">enter code here</code>booc -output:test.exe test.boo</p>
+
+<p>生成文件test.exe</p>
+
+<h3 id="4使用boocexe编译boolang脚本使用boolangcompiler-api">4.使用booc.exe编译Boolang脚本(使用Boo.Lang.Compiler API)</h3>
+
+<p>test.boo的内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import Boo.Lang.Compiler
+import Boo.Lang.Compiler.IO
+import Boo.Lang.Compiler.Pipelines
+
+compiler = BooCompiler()
+compiler.Parameters.Input.Add(StringInput("&lt;script&gt;", "print('Hello!')"))
+compiler.Parameters.Pipeline = Run()
+
+compiler.Run()
+</code></pre></div></div>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>booc -output:test.exe test.boo
+</code></pre></div></div>
+
+<p>生成文件test.exe</p>
+
+<h3 id="5使用c调用boolang脚本">5.使用c#调用Boolang脚本</h3>
+
+<p>参考资料：</p>
+
+<p>https://github.com/boo-lang/boo/wiki/Scripting-with-the-Boo.Lang.Compiler-API</p>
+
+<p>script.boo的内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static def stringManip(item as string): //static lets us invoke this method without needing to instanize a class.
+	return "'${item}'? What the hell are you talking about?"
+</code></pre></div></div>
+
+<p>runBoo.cs的内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Text;
+using System.Reflection;
+
+using Boo.Lang.Compiler;
+using Boo.Lang.Compiler.IO;
+using Boo.Lang.Compiler.Pipelines;
+namespace ConsoleApplication1
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            BooCompiler compiler = new BooCompiler();
+            compiler.Parameters.Input.Add(new FileInput("script.boo"));
+            compiler.Parameters.Pipeline = new CompileToMemory();
+            compiler.Parameters.Ducky = true;
+
+            CompilerContext context = compiler.Run();
+            //Note that the following code might throw an error if the Boo script had bugs.
+            //Poke context.Errors to make sure.
+            if (context.GeneratedAssembly != null)
+            {
+                Type scriptModule = context.GeneratedAssembly.GetType("ScriptModule");
+                MethodInfo stringManip = scriptModule.GetMethod("stringManip");
+                string output = (string)stringManip.Invoke(null, new object[] { "Tag" } );
+                Console.WriteLine(output);
+            }
+            else
+            {
+                foreach (CompilerError error in context.Errors)
+                    Console.WriteLine(error);
+            }
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>使用csc.exe编译runBoo.cs，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /r:Boo.Lang.dll,Boo.Lang.Compiler.dll,Boo.Lang.Parser.dll /t:exe runBoo.cs
+</code></pre></div></div>
+
+<p>生成文件runBoo.exe，调用script.boo的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>runBoo.exe script.boo
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-9/2-3.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>runBoo.exe的同级目录下需要存在以下三个dll：</p>
+
+<ul>
+  <li>Boo.Lang.dll</li>
+  <li>Boo.Lang.Compiler.dll</li>
+  <li>Boo.Lang.Parser.dll</li>
+</ul>
+
+<p>这种方法的优点是能将Boolang脚本编译到内存中并运行，对应到上面的示例，runBoo.exe在内存中对script.boo进行编译并运行</p>
+
+<h2 id="0x04-通过boolang语言执行shellcode的实现代码">0x04 通过Boolang语言执行shellcode的实现代码</h2>
+<hr />
+
+<p>代码来自https://github.com/byt3bl33d3r/OffensiveDLR/</p>
+
+<h3 id="1使用c调用boolang脚本">1.使用c#调用Boolang脚本</h3>
+
+<p>需要使用以下两个代码文件：</p>
+
+<h4 id="1runboocs">(1)runBoo.cs</h4>
+
+<p>代码地址：</p>
+
+<p>https://github.com/byt3bl33d3r/OffensiveDLR/blob/master/runBoo.cs</p>
+
+<p>同0x04-5中的runBoo.cs结构基本相同</p>
+
+<p>在数组中分别保存了32位和64位的shellcode</p>
+
+<p>命令行第1个参数作为传入的Boolang脚本文件</p>
+
+<p>命令行第2个参数作为注入shellcode的方法</p>
+
+<h4 id="2shellcodeboo">(2)shellcode.boo</h4>
+
+<p>代码地址：</p>
+
+<p>https://github.com/byt3bl33d3r/OffensiveDLR/blob/master/shellcode.boo</p>
+
+<p>Boolang脚本，支持以下三种注入方法：</p>
+
+<ul>
+  <li>InjectQueueUserAPC，通过QueueUserAPC注入explorer.exe进程</li>
+  <li>InjectSelf，通过CreateThread注入当前进程</li>
+  <li>InjectRemote，通过CreateRemoteThread注入explorer.exe进程</li>
+</ul>
+
+<p>具体用法如下：</p>
+
+<h4 id="1使用cscexe编译runboocs">(1)使用csc.exe编译runBoo.cs</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /r:Boo.Lang.Compiler.dll,Boo.Lang.dll,Boo.Lang.Parser.dll /t:exe runBoo.cs
+</code></pre></div></div>
+
+<p>生成文件runBoo.exe</p>
+
+<h4 id="2测试功能">(2)测试功能</h4>
+
+<p>可用命令如下：</p>
+
+<ol>
+  <li>runBoo.exe shellcode.boo InjectQueueUserAPC</li>
+  <li>runBoo.exe shellcode.boo InjectSelf</li>
+  <li>runBoo.exe shellcode.boo InjectRemote</li>
+</ol>
+
+<p><strong>注：</strong></p>
+
+<p>runBoo.exe的同级目录下需要存在以下三个dll：</p>
+
+<ul>
+  <li>Boo.Lang.dll</li>
+  <li>Boo.Lang.Compiler.dll</li>
+  <li>Boo.Lang.Parser.dll</li>
+</ul>
+
+<p>解决方法1：</p>
+
+<p>使用ILMerge</p>
+
+<p>参考资料：</p>
+
+<p>https://github.com/boo-lang/boo/wiki/Merge-Boo.Lang.dll-into-your-exe-or-dll</p>
+
+<h3 id="2使用powershell调用boolang脚本">2.使用Powershell调用Boolang脚本</h3>
+
+<p>需要使用以下两个代码文件：</p>
+
+<h4 id="1invoke-jumpscareps1">(1)Invoke-JumpScare.ps1</h4>
+
+<p>代码地址：</p>
+
+<p>https://github.com/byt3bl33d3r/OffensiveDLR/blob/master/Invoke-JumpScare.ps1</p>
+
+<p>功能同runBoo.cs，但是通过反射加载所需的三个dll(Boo.Lang.dll,Boo.Lang.Compiler.dll,Boo.Lang.Parser.dll)，同级目录下不再需要这三个dll文件</p>
+
+<p>不需要使用csc.exe进行编译，不会产生中间文件</p>
+
+<p><strong>注：</strong></p>
+
+<p>可以将Boolang脚本的内容保存在变量中，这样不需要额外的Boolang脚本，所有的功能只需要一个Powershell文件即可</p>
+
+<h4 id="2shellcodeboo-1">(2)shellcode.boo</h4>
+
+<p>代码地址：</p>
+
+<p>https://github.com/byt3bl33d3r/OffensiveDLR/blob/master/shellcode.boo</p>
+
+<p>内容同上</p>
+
+<p>实际测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-9/3-1.png" alt="Alt text" /></p>
+
+<h2 id="0x05-利用分析">0x05 利用分析</h2>
+<hr />
+
+<p>对于byt3bl33d3r开源的代码，相比于开源的Boolang代码，添加了以下功能：</p>
+
+<ul>
+  <li>支持Powershell调用，省去使用csc.exe编译的步骤，Boolang脚本是动态编译和即时执行的，使用反射加载所需的三个dll，不需要依赖三个dll</li>
+  <li>添加执行shellcode的功能</li>
+</ul>
+
+<p>这种利用方法有如下优点：</p>
+
+<p>使用Boolang语言执行shellcode，启动代码(Powershell脚本)不包括恶意的功能，payload可保存在另一个脚本文件中</p>
+
+<p>简单理解：</p>
+
+<p>通过Boolang语言开发了一个Powershell格式的脚本解释器，能在内存中动态加载另一脚本文件中的代码</p>
+
+<h2 id="0x06-防御检测">0x06 防御检测</h2>
+<hr />
+
+<p>在之前的文章《渗透技巧——Use AutoIt script to create a keylogger》曾介绍过类似的方法，通过脚本解释器启动另一脚本文件中的代码，所以防御检测的方法类似</p>
+
+<p>结合利用方法，我们在检测的时候通常会遇见以下情况：启动程序和payload分离，在静态检测上存在困难</p>
+
+<p>但是这个技术无法绕过对程序行为的检测，所以可以通过检测进程行为的方式进行防御</p>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文介绍了Boolang语言的特点和用法，结合byt3bl33d3r开源的代码，分析通过Boolang语言执行shellcode的优点，给出防御检测的建议</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

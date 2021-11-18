@@ -1,0 +1,194 @@
+I"� <h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在上一篇文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E5%AF%BC%E5%87%BAFirefox%E6%B5%8F%E8%A7%88%E5%99%A8%E4%B8%AD%E4%BF%9D%E5%AD%98%E7%9A%84%E5%AF%86%E7%A0%81">《渗透技巧——导出Firefox浏览器中保存的密码》</a>介绍了导出Firefox浏览器密码的常用方法，其中<a href="https://github.com/unode/firefox_decrypt">firefox_decrypt.py</a>使用NSS(Network Security Services)进行解密，支持key3.db和key4.db的Master Password解密。本文将要对其涉及的原理进行介绍，编写测试代码，实现对Master Password的验证，分享脚本编写的细节</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍如下内容：</p>
+
+<ul>
+  <li>Network Security Services简介</li>
+  <li>通过python调用Network Security Services导出Firefox浏览器密码</li>
+  <li>开源python脚本</li>
+  <li>爆破脚本的实现</li>
+</ul>
+
+<h2 id="0x02-network-security-services简介">0x02 Network Security Services简介</h2>
+<hr />
+
+<p>Network Security Services(NSS)是一组旨在支持安全的客户端和服务器应用程序跨平台开发的库</p>
+
+<p>参考文档：</p>
+
+<p>https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS</p>
+
+<p>Firefox浏览器使用NSS作为加密算法和安全网络协议的基础库，在凭据加解密上使用了PKCS#11标准</p>
+
+<p>参考文档：</p>
+
+<p>https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/PKCS11</p>
+
+<h2 id="0x03-通过python调用network-security-services导出firefox浏览器的密码">0x03 通过Python调用Network Security Services导出Firefox浏览器的密码</h2>
+<hr />
+
+<p>参考代码：</p>
+
+<p>https://github.com/unode/firefox_decrypt</p>
+
+<p>https://github.com/Kerisa/BrowserPasswordDump/blob/master/MozillaPwd.py</p>
+
+<p>Windows系统下的解密流程如下：</p>
+
+<ol>
+  <li>加载Network Security Services需要的nss3.dll</li>
+  <li>调用NSS_Init()进行初始化</li>
+  <li>调用PK11_GetInternalKeySlot()来获得internal slot(用作验证Master Password)</li>
+  <li>调用PK11_CheckUserPassword()验证Master Password</li>
+  <li>读取logins.json获得加密数据</li>
+  <li>调用PK11SDR_Decrypt()进行解密</li>
+</ol>
+
+<p>具体需要注意的问题如下：</p>
+
+<h3 id="1-python和firefox的版本需要保持一致">1. Python和Firefox的版本需要保持一致</h3>
+
+<p>64位系统下，需要同为32位或64位</p>
+
+<h3 id="2-将firefox的安装路径加入到环境变量便于调用">2. 将Firefox的安装路径加入到环境变量，便于调用</h3>
+
+<p>Firefox浏览器的安装目录下有我们需要调用的nss3.dll，所以可以选择将Firefox的安装路径加入到环境变量PATH，对应的python代码如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import os
+firefoxPath = "C:\Program Files\Mozilla Firefox"
+os.environ["PATH"] = ';'.join([firefoxPath, os.environ["PATH"]])
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>64位操作系统下，64位Firefox浏览器的默认安装目录为<code class="language-plaintext highlighter-rouge">C:\Program Files\Mozilla Firefox</code>，32位Firefox浏览器的默认安装目录为<code class="language-plaintext highlighter-rouge">C:\Program Files (x86)\Mozilla Firefox</code></p>
+
+<p>调用nss3.dll的python代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import ctypes
+NssDll = ctypes.CDLL("nss3.dll")
+</code></pre></div></div>
+
+<h3 id="3-nss初始化时需要三个文件">3. NSS初始化时需要三个文件</h3>
+
+<p>具体位置为：<code class="language-plaintext highlighter-rouge">%APPDATA%\Mozilla\Firefox\Profiles\xxxxxxxx.default\</code></p>
+
+<p>需要以下三个文件：</p>
+
+<ul>
+  <li>cert9.db</li>
+  <li>key4.db</li>
+  <li>logins.json</li>
+</ul>
+
+<p>可将以上三个文件保存在同一文件夹下，例如<code class="language-plaintext highlighter-rouge">c:\test\data</code></p>
+
+<p>NSS初始化的代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>profilePath = "C:\\test\\data"
+NssDll.NSS_Init(profilePath)
+</code></pre></div></div>
+
+<h3 id="4-读取loginsjson获得加密的数据">4. 读取logins.json获得加密的数据</h3>
+
+<p><code class="language-plaintext highlighter-rouge">encryptedUsername</code>和<code class="language-plaintext highlighter-rouge">encryptedPassword</code>项为加密的数据，需要使用NSS进行解密</p>
+
+<p>在解密前需要先进行base64解码，再调用<code class="language-plaintext highlighter-rouge">PK11SDR_Decrypt()</code>解密获得明文</p>
+
+<p><code class="language-plaintext highlighter-rouge">timeCreated</code>、<code class="language-plaintext highlighter-rouge">timeLastUsed</code>和<code class="language-plaintext highlighter-rouge">timePasswordChanged</code>项为Epoch Time格式(从协调世界时1970年1月1日0时0分0秒起到现在的总秒数,不包括闰秒)，可通过如下网址转换成实际的时间：</p>
+
+<p>https://esqsoft.com/javascript_examples/date-to-epoch.htm</p>
+
+<p>转换时间格式的python代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from datetime import datetime
+def timestamp_to_strtime(timestamp):
+	return datetime.fromtimestamp(timestamp / 1000.0).strftime('%Y-%m-%d %H:%M:%S')
+print timestamp_to_strtime(1580901797579) 
+</code></pre></div></div>
+
+<p><strong>注:</strong></p>
+
+<p>不同版本的Firefox保存记录的文件名称不同，具体区别如下：</p>
+
+<ul>
+  <li>Version大于等于32.0，保存记录的文件为logins.json</li>
+  <li>Version大于等于3.5，小于32.0，保存记录的文件为signons.sqlite</li>
+</ul>
+
+<p>更详细的文件说明可参考：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>http://kb.mozillazine.org/Profile_folder_-_Firefox
+</code></pre></div></div>
+
+<h2 id="0x04-开源python脚本">0x04 开源python脚本</h2>
+<hr />
+
+<p>参考代码：</p>
+
+<p>https://github.com/unode/firefox_decrypt</p>
+
+<p>https://github.com/Kerisa/BrowserPasswordDump/blob/master/MozillaPwd.py</p>
+
+<p>我的测试代码已上传至GitHub，地址如下:</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/ExportFirefoxPassword.py</p>
+
+<p>测试环境:</p>
+
+<ul>
+  <li>64位Windows操作系统安装64位Firefox浏览器</li>
+  <li>Firefox默认安装路径为<code class="language-plaintext highlighter-rouge">"C:\Program Files\Mozilla Firefox"</code></li>
+  <li>配置文件路径为<code class="language-plaintext highlighter-rouge">"C:\\Users\\a\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles\\2yi8qmhz.default-beta"</code>，包括以下三个文件：</li>
+  <li>cert9.db</li>
+  <li>key4.db</li>
+  <li>logins.json</li>
+</ul>
+
+<p>代码支持两个功能：</p>
+
+<h3 id="1-验证master-password">1. 验证Master Password</h3>
+
+<p>对应子函数<code class="language-plaintext highlighter-rouge">checkMasterPassword(MasterPassword)</code></p>
+
+<p>如果MasterPassword正确，显示正确的MasterPassword，并返回TRUE</p>
+
+<p>如果MasterPassword错误，返回FALSE</p>
+
+<p>这个可以用来实现对Master Password的爆破</p>
+
+<h3 id="2-导出firefox浏览器中保存的密码">2. 导出Firefox浏览器中保存的密码</h3>
+
+<p>对应子函数<code class="language-plaintext highlighter-rouge">ExportData(MasterPassword)</code></p>
+
+<p>如果未设置Master Password，MasterPassword参数设置为<code class="language-plaintext highlighter-rouge">""</code>即可</p>
+
+<p>如果设置了Master Password，需要填入正确的Master Password才能解密获得真正的数据</p>
+
+<p>具体能够导出以下信息：</p>
+
+<ul>
+  <li>url</li>
+  <li>username</li>
+  <li>password</li>
+  <li>timeCreated</li>
+  <li>timePasswordChanged</li>
+  <li>timeLastUsed</li>
+</ul>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了通过Python调用Network Security Services导出Firefox浏览器密码的方法，分享脚本编写细节。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

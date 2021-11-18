@@ -1,0 +1,178 @@
+I"�<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在渗透测试中，获得了Windows系统的访问权限后，通常会使用mimikatz的<code class="language-plaintext highlighter-rouge">sekurlsa::logonpasswords</code>命令尝试读取进程lsass的信息来获取当前登录用户的密码信息，但想要全面获取系统中的密码信息，还要对SAM数据库中保存的信息进行提取，导出当前系统中所有本地用户的hash。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>通过SAM数据库获得用户hash的多种方法</li>
+  <li>原理分析</li>
+</ul>
+
+<h2 id="0x02-通过sam数据库获得用户hash的方法">0x02 通过SAM数据库获得用户hash的方法</h2>
+<hr />
+
+<h3 id="1在线读取sam数据库">1、在线读取SAM数据库</h3>
+
+<p>读取当前系统的SAM数据库文件，获得系统所有本地用户的hash</p>
+
+<h4 id="1-mimikatz">(1) mimikatz</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>privilege::debug
+token::elevate
+lsadump::sam
+</code></pre></div></div>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-8/2-1.png" alt="Alt text" /></p>
+
+<h4 id="2-pwdump7">(2) pwdump7</h4>
+
+<p>下载地址：</p>
+
+<p>http://passwords.openwall.net/b/pwdump/pwdump7.zip</p>
+
+<p>管理员权限执行，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-8/2-2.png" alt="Alt text" /></p>
+
+<h4 id="3-powershell">(3) powershell</h4>
+
+<p>下载地址：</p>
+
+<p>https://raw.githubusercontent.com/EmpireProject/Empire/master/data/module_source/credentials/Invoke-PowerDump.ps1</p>
+
+<p>管理员权限执行，测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-8/2-3.png" alt="Alt text" /></p>
+
+<h3 id="2离线读取sam数据库">2、离线读取SAM数据库</h3>
+
+<p>获取当前系统的SAM数据库文件，在另一系统下进行读取</p>
+
+<p>导出SAM数据库文件有以下两种实现方法：</p>
+
+<h4 id="1-保存注册表">(1) 保存注册表</h4>
+
+<p>管理员权限</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg save HKLM\SYSTEM SystemBkup.hiv
+reg save HKLM\SAM SamBkup.hiv
+</code></pre></div></div>
+
+<h4 id="2-复制文件">(2) 复制文件</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\System32\config\SYSTEM
+C:\Windows\System32\config\SAM
+</code></pre></div></div>
+
+<p>默认无法被复制，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-8/2-4.png" alt="Alt text" /></p>
+
+<p>需要借助NinjaCopy，作者Joe Bialek，参考下载地址：</p>
+
+<p>https://github.com/3gstudent/NinjaCopy</p>
+
+<p>导出SAM数据库文件后，在另一系统，可通过以下方式导出用户hash：</p>
+
+<h4 id="1-mimikatz-1">(1) mimikatz</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>lsadump::sam /sam:SamBkup.hiv /system:SystemBkup.hiv
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-8/3-1.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>mimikatz的官方说明有问题，地址如下：</p>
+
+<p>https://github.com/gentilkiwi/mimikatz/wiki/module-~-lsadump</p>
+
+<p>导出命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>lsadump::sam SystemBkup.hiv SamBkup.hiv
+</code></pre></div></div>
+
+<p>会报错，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-8/3-2.png" alt="Alt text" /></p>
+
+<p>可用的命令由@我爱这个世界提供</p>
+
+<h3 id="补充">补充：</h3>
+
+<p>以下工具在读取Win7系统的SAM数据库文件会报错</p>
+
+<h4 id="1-pwdump7">(1) Pwdump7</h4>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-8/3-3.png" alt="Alt text" /></p>
+
+<h4 id="2-pwdump5">(2) Pwdump5</h4>
+
+<p>下载地址：</p>
+
+<p>http://passwords.openwall.net/b/pwdump/pwdump5.zip</p>
+
+<p>读取结果不正确，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-8/3-4.png" alt="Alt text" /></p>
+
+<h4 id="3-cain">(3) cain</h4>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-2-8/3-5.png" alt="Alt text" /></p>
+
+<h2 id="0x03-原理分析">0x03 原理分析</h2>
+<hr />
+
+<h3 id="1读取hklmsystem获得syskey">1、读取HKLM\SYSTEM，获得syskey</h3>
+
+<p>读取注册表项<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa</code>下的键值<code class="language-plaintext highlighter-rouge">JD</code>、<code class="language-plaintext highlighter-rouge">Skew1</code>、<code class="language-plaintext highlighter-rouge">GBG</code>和<code class="language-plaintext highlighter-rouge">Data</code>中的内容，拼接成syskey</p>
+
+<p>代码可参考：</p>
+
+<p>https://github.com/johannwmeyer/quarkspwdump/blob/a68aa6330f37eb8d00055c73e6a4e3cb52bcdd6d/src/crypt.cpp#L222</p>
+
+<p>https://github.com/gentilkiwi/mimikatz/blob/master/mimikatz/modules/kuhl_m_lsadump.c#L219</p>
+
+<p>完整计算代码可参考：</p>
+
+<p>https://raw.githubusercontent.com/3gstudent/Writeup/master/getsyskey.cpp</p>
+
+<p>(Steal from http://www.zcgonvh.com/post/ntds_dit_pwd_dumper.html)</p>
+
+<h3 id="2使用syskey解密hklmsam">2、使用syskey解密HKLM\SAM</h3>
+
+<p>读取注册表项<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SAM\SAM\Domains\Account\Users</code>下每个用户中F项和V项的内容，使用syskey进行一系列的解密</p>
+
+<p>详细解密过程可参考如下链接：</p>
+
+<p>http://www.xfocus.net/articles/200306/550.html</p>
+
+<p>综上，想要通过SAM数据库获得用户hash，需要获得两个文件：HKLM\SYSTEM和HKLM\SAM</p>
+
+<p>最直接的导出方式是读取当前系统下的注册表HKLM\SYSTEM和HKLM\SAM，但需要获得system权限</p>
+
+<p>从admin切换到system权限的方法可参考之前的文章：<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E4%BB%8EAdmin%E6%9D%83%E9%99%90%E5%88%87%E6%8D%A2%E5%88%B0System%E6%9D%83%E9%99%90">《渗透技巧——从Admin权限切换到System权限》</a></p>
+
+<h2 id="0x04-小节">0x04 小节</h2>
+<hr />
+
+<p>本文介绍了通过SAM数据库获得所有用户hash的多种方法，关键在于读取HKLM\SYSTEM和HKLM\SAM</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

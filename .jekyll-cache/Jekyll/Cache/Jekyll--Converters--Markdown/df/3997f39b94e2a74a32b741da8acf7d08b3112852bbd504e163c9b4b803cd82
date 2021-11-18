@@ -1,0 +1,378 @@
+I"�7<h2 id="0x00-前言">0x00 前言</h2>
+<p>上篇对PNG的文件格式进行了分析，介绍了如何在不影响PNG文件的正常浏览下将payload以辅助数据块tEXt的格式插入到PNG文件中。这次将要介绍一个在图像数据块IDAT下隐藏payload的技巧——LSB隐写</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/0.png" alt="Alt text" /></p>
+
+<blockquote>
+  <p>图片引用自http://datagenetics.com/blog/march12012/index.html</p>
+</blockquote>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<h3 id="idat数据块">IDAT数据块</h3>
+
+<ul>
+  <li>储存图像像数数据</li>
+  <li>在数据流中可包含多个连续顺序的图像数据块</li>
+  <li>采用LZ77算法的派生算法进行压缩</li>
+  <li>可以用zlib解压缩</li>
+</ul>
+
+<p>zlib解压缩的python实现代码如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#! /usr/bin/env python
+import zlib
+import binascii
+IDAT = "789C5D91011280400802BF04FFFF5C75294B5537738A21A27D1E49CFD17DB3937A92E7E603880A6D485100901FB0410153350DE83112EA2D51C54CE2E585B15A2FC78E8872F51C6FC1881882F93D372DEF78E665B0C36C529622A0A45588138833A170A2071DDCD18219DB8C0D465D8B6989719645ED9C11C36AE3ABDAEFCFC0ACF023E77C17C7897667".decode('hex')
+result = binascii.hexlify(zlib.decompress(IDAT))
+print result
+</code></pre></div></div>
+
+<blockquote>
+  <p>引用自http://drops.wooyun.org/tips/4862</p>
+</blockquote>
+
+<h3 id="lsb隐写">LSB隐写</h3>
+<ul>
+  <li>LSB全称least significant bit，最低有效位</li>
+  <li>PNG文件中的图像像数一般是由RGB三原色（红绿蓝）组成，每一种颜色占用8位，取值范围为0x00~0xFF，即有256种颜色，一共包含了256的3次方的颜色，即16777216 种颜色</li>
+  <li>人类的眼睛可以区分约1000万种不同的颜色</li>
+  <li>这意味着人类的眼睛无法区分余下的颜色大约有6777216种</li>
+  <li>LSB隐写就是修改RGB颜色分量的最低二进制位（LSB），而人类的眼睛不会注意到这前后的变化</li>
+  <li>每个像数可以携带3比特的信息</li>
+</ul>
+
+<h2 id="0x02-python实现">0x02 Python实现</h2>
+<hr />
+<p>关于LSB隐写在github上值得学习的项目：</p>
+
+<p>https://github.com/RobinDavid/LSB-Steganography</p>
+
+<p>https://github.com/cyberinc/cloacked-pixel</p>
+
+<p>下面对cloacked-pixel进行测试</p>
+
+<p>测试图片：</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/big.png" alt="Alt text" /></p>
+
+<p><strong>源文件下载地址:</strong>
+http://www.easyicon.net/language.en/1119182-Enderman_Png_icon.html</p>
+
+<h3 id="1-加密">1、 加密</h3>
+
+<p>运行：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python lsb.py hide big.png 1.txt 123456
+</code></pre></div></div>
+
+<p><strong>参数说明：</strong></p>
+
+<p>hide：表示加密模式
+big.png：待加密的png图片
+1.txt：存放payload
+123456：加密的密码</p>
+
+<p>运行后生成图片<code class="language-plaintext highlighter-rouge">big.png-stego.png</code></p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-1.PNG" alt="Alt text" /></p>
+
+<p>分析一下加密图片big.png-stego.png的格式，使用上篇文章介绍的<code class="language-plaintext highlighter-rouge">check.cpp</code></p>
+
+<p><strong>下载地址:</strong></p>
+
+<p>https://github.com/3gstudent/PNG-Steganography/blob/master/check.cpp</p>
+
+<p>加密前后对比如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-3.PNG" alt="Alt text" /></p>
+
+<p><code class="language-plaintext highlighter-rouge">cloacked-pixel</code>在加密的过程中会删除其他数据块，只保留关键数据块IDAT</p>
+
+<p>使用<code class="language-plaintext highlighter-rouge">HexEditorNeo</code>查看加密图片也能印证我们的判断，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-4.PNG" alt="Alt text" /></p>
+
+<p><strong>注:</strong></p>
+
+<p>当然也可以通过阅读源码进行分析</p>
+
+<h3 id="2-解密">2、 解密</h3>
+
+<p>运行：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python lsb.py extract big.png-stego.png 3.txt 123456
+</code></pre></div></div>
+
+<p><strong>参数说明：</strong>
+extract：表示解密模式 
+big.png-stego.png：待解密的png图片
+3.txt：存放导出的payload
+123456：解密密码</p>
+
+<p>如图，成功解密获得payload</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-2.PNG" alt="Alt text" /></p>
+
+<h3 id="3-分析">3、 分析</h3>
+
+<p>运行：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python lsb.py analyse big.png-stego.png 
+</code></pre></div></div>
+
+<p><strong>参数说明：</strong></p>
+
+<p>analyse：表示分析模式
+big.png-stego.png ：待分析的png图片
+运行后会对图像进行分析，将其分割成块，标记每个块的最低有效位</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-5.PNG" alt="Alt text" /></p>
+
+<p>这是加密前后分析对比图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-6.png" alt="Alt text" /></p>
+
+<p>肉眼几乎无法分辨图片的差别，因为payload越短，分析图的差别就越小，这里我们可以借助软件帮助分析</p>
+
+<p><strong>工具名称：</strong><code class="language-plaintext highlighter-rouge">Stegsolve</code></p>
+
+<p><strong>下载地址：</strong></p>
+
+<p>http://www.caesum.com/handbook/Stegsolve.jar</p>
+
+<p><strong>环境搭建：</strong></p>
+
+<p>安装jdk，配置java环境</p>
+
+<p>使用<code class="language-plaintext highlighter-rouge">Stegsolve</code>打开a.png,选择Analyse-Image Combiner，选择b.png</p>
+
+<p>进行<code class="language-plaintext highlighter-rouge">异或对比(XOR)</code>,如图，检测到细微的差异</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-7.png" alt="Alt text" /></p>
+
+<h2 id="0x03-c实现">0x03 C++实现</h2>
+<hr />
+<p><code class="language-plaintext highlighter-rouge">Grant Curell</code>分享了通过c++实现的方法，值得学习，所以在此对其介绍并进行测试</p>
+
+<p><strong>文章地址：</strong>
+http://www.codeproject.com/Articles/581298/PNG-Image-Steganography-with-libpng
+<strong>作者：</strong></p>
+
+<p>Grant Curell</p>
+
+<p><strong>代码下载链接：</strong></p>
+
+<p>http://www.codeproject.com/KB/security/581298/PNG_stego.zip</p>
+
+<p><strong>测试环境：</strong></p>
+
+<p>Win7 X64</p>
+
+<p>vs2012</p>
+
+<h3 id="1-直接编译会报错">1、 直接编译会报错</h3>
+
+<p>项目<code class="language-plaintext highlighter-rouge">zlib</code>可直接编译成功</p>
+
+<p>编译项目<code class="language-plaintext highlighter-rouge">libpng</code>，错误如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>fatal error C1083: Cannot open include file: 'zlib.h': No such file or directory
+</code></pre></div></div>
+
+<p><strong>解决方法：</strong></p>
+
+<p>需要对项目添加include目录</p>
+
+<p>右键-Property-VC++ Directories</p>
+
+<p>选择Include Directories</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-8.png" alt="Alt text" /></p>
+
+<p>添加zlib-1.2.3，输入：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>..\..\..\zlib-1.2.3;
+</code></pre></div></div>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-9.png" alt="Alt text" /></p>
+
+<p>再次编译，报错如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>fatal error LNK1181: cannot open input file 'zlib.lib'
+</code></pre></div></div>
+
+<p><strong>解决方法：</strong></p>
+
+<p>需要对项目添加lib目录</p>
+
+<p>选择Library Directories</p>
+
+<p>添加zlib.lib，输入：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>..\..\..\LIB Debug;
+</code></pre></div></div>
+
+<p>如图，编译成功</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-10.png" alt="Alt text" /></p>
+
+<p><strong>Tips：</strong></p>
+
+<p>在Include Directories和Library Directories中也可以直接指定绝对路径(如C:\test\cloacked-pixel-master\PNG_stego\zlib-1.2.3)，本例使用<code class="language-plaintext highlighter-rouge">..\</code>表示的是相对路径</p>
+
+<p>编译项目<code class="language-plaintext highlighter-rouge">PNG_encode_decode</code>，发生同样的编译错误</p>
+
+<p><strong>解决方法：</strong></p>
+
+<p>Include Directories下添加zlib-1.2.3和libpng-1.2.37-src，输入：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>../zlib-1.2.3;../libpng-1.2.37-src;
+</code></pre></div></div>
+
+<p>Library Directories下添加libpng.lib，输入：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>..\LIB Debug;
+</code></pre></div></div>
+
+<p>如图，最终编译成功</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-11.PNG" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>三个项目工程存在前后的调用关系，所以编译顺序为<code class="language-plaintext highlighter-rouge">zlib</code>-<code class="language-plaintext highlighter-rouge">libpng</code>-<code class="language-plaintext highlighter-rouge">PNG_encode_decode</code></p>
+
+<h3 id="2-加密测试">2、 加密测试</h3>
+<p>待加密文件：big.png</p>
+
+<p>payload文件：1.txt</p>
+
+<p>输出加密文件：bigen.png</p>
+
+<p>项目<code class="language-plaintext highlighter-rouge">PNG_encode_decode</code>中的main.cpp修改如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#include "PNG_file.h"
+void main() {
+
+	PNG_file link = PNG_file("big.png");
+	link.encode("1.txt");
+	link.outputPNG("bigen.png");
+}
+</code></pre></div></div>
+
+<p>运行后生成<code class="language-plaintext highlighter-rouge">bigen.png</code>，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/bigen.png" alt="Alt text" /></p>
+
+<p>对比加密前后的文件，大小存在差异，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-12.png" alt="Alt text" /></p>
+
+<p>原理上LSB隐写不会改变文件大小，查找原因</p>
+
+<p>使用<code class="language-plaintext highlighter-rouge">check.cpp</code>解析数据块目录，发现加密后多了数个tTXt段</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-13.png" alt="Alt text" /></p>
+
+<p>使用HexEditorNeo查看加密图片细节，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-14.png" alt="Alt text" /></p>
+
+<p>加密后的图片包含了原图片的一些信息，造成了图片大小不同</p>
+
+<h3 id="3-去掉多余信息">3、 去掉多余信息</h3>
+
+<p><strong>方法a:</strong></p>
+
+<p>使用<code class="language-plaintext highlighter-rouge">HexEditorNeo</code>直接删除多余信息</p>
+
+<p><strong>方法b：</strong></p>
+
+<p>使用<code class="language-plaintext highlighter-rouge">compress.cpp</code></p>
+
+<p><strong>下载地址：</strong></p>
+
+<p>https://github.com/3gstudent/PNG-Steganography/blob/master/compress.cpp</p>
+
+<p>生成去掉多余tTXt段的加密图片<code class="language-plaintext highlighter-rouge">bigensimple.png</code>，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/bigensimple.png" alt="Alt text" /></p>
+
+<p>bigensimple.png同原图片大小相同，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-15.png" alt="Alt text" /></p>
+
+<h3 id="4-解密测试">4、 解密测试</h3>
+
+<p>项目<code class="language-plaintext highlighter-rouge">PNG_encode_decode</code>中的main.cpp修改如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#include "PNG_file.h"
+void main() {
+
+	PNG_file link = PNG_file("bigensimple.png");
+	link.decode("2.txt");
+}
+</code></pre></div></div>
+
+<p>运行后生成2.txt，获得存储加密后的payload</p>
+
+<h3 id="5-分析">(5) 分析</h3>
+
+<p>对于LSB隐写，可使用<code class="language-plaintext highlighter-rouge">Stegsolve</code>辅助分析</p>
+
+<p>打开加密图片后，选择Analyse-DataExtract</p>
+
+<p>Bit Planes 选中Reg、Green、Blue的第0位</p>
+
+<p>Bit Order选中LSB First</p>
+
+<p>Bit Plane Order选中RGB</p>
+
+<p>可以看到加密形式的payload，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-7-22/2-16.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong>
+当然可以通过阅读程序源码找到图片的加密数据，本例只是给出对图片分析的一些参考思路</p>
+
+<h2 id="0x04-小结">0x04 小结</h2>
+
+<hr />
+<p>本文分别介绍如何通过Python和C++实现对PNG文件的LSB隐写，参照文中的分析思路也可对常见的LSB隐写数据进行提取分析。</p>
+
+<p><strong>注：</strong></p>
+
+<p>修改好的PNG_stego工程已上传至github：</p>
+
+<p>https://github.com/3gstudent/PNG_stego-test</p>
+
+<p><strong>更多学习资料：</strong></p>
+
+<p>https://github.com/fgrimme/Matroschka</p>
+
+<p>https://waronpants.net/article/png-steganography/</p>
+
+<p>https://waronpants.net/pngsteg/trunk/steg.c</p>
+
+<p>http://www1.chapman.edu/~nabav100/ImgStegano/</p>
+
+<p>http://www.libpng.org/pub/png/libpng-1.2.5-manual.html#section-3.1</p>
+
+<p>https://www.w3.org/TR/PNG/</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+:ET

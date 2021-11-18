@@ -1,0 +1,369 @@
+I"�3<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在Windows 10 Enterprise和Server 2016引入的新功能Decvice Guard是一种白名单机制，可用来阻止未授权的代码执行。</p>
+
+<p>简单的理解，只要是不包含微软数字签名的程序，均无法用来执行代码。</p>
+
+<p>然而，如果能够找到带有微软签名的程序，那么就能绕过Decvice Guard对应用程序的拦截，实现代码执行。</p>
+
+<p>目前已知的方法有：</p>
+
+<p><strong>1、WinDbg/CDB</strong></p>
+
+<p>可用来执行shell code</p>
+
+<p>作者：Matt Graeber@mattifestation</p>
+
+<p>地址：http://www.exploit-monday.com/2016/08/windbg-cdb-shellcode-runner.html</p>
+
+<p><strong>2、CSI.exe</strong></p>
+
+<p>可用来执行c#代码</p>
+
+<p>作者：Casey Smith@subTee</p>
+
+<p>地址：https://twitter.com/subTee/status/796737674954608641</p>
+
+<p><strong>3、dnx.exe</strong></p>
+
+<p>可用来执行c#代码</p>
+
+<p>作者：Matt Nelson@enigma0x3</p>
+
+<p>地址：https://enigma0x3.net/2016/11/17/bypassing-application-whitelisting-by-using-dnx-exe/</p>
+
+<p><strong>4、rcsi.exe</strong></p>
+
+<p>可用来执行c#代码</p>
+
+<p>作者：Matt Nelson@enigma0x3</p>
+
+<p>地址：https://enigma0x3.net/2016/11/21/bypassing-application-whitelisting-by-using-rcsi-exe/</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>Matt Nelson@enigma0x3在最近分享了他绕过Decvice Guard的两种方法，这是继Matt Graeber@mattifestation和Casey Smith@subTee后的第三和第四种绕过方法，本文将重现这两个过程，完成他留给读者的两个作业，优化dnx.exe的环境搭建步骤，分享学习心得。</p>
+
+<p><strong>链接如下：</strong></p>
+
+<p>https://enigma0x3.net/2016/11/17/bypassing-application-whitelisting-by-using-dnx-exe/</p>
+
+<p>https://enigma0x3.net/2016/11/21/bypassing-application-whitelisting-by-using-rcsi-exe/</p>
+
+<h2 id="0x02-dnxexe">0x02 dnx.exe</h2>
+<hr />
+
+<p>dnx.exe内置于.NET Execution environment，包含数字签名，可用来执行c#代码</p>
+
+<p>首先搭建dnx.exe的使用环境</p>
+
+<p><strong>参考资料：</strong></p>
+
+<p>https://blogs.msdn.microsoft.com/sujitdmello/2015/04/23/step-by-step-installation-instructions-for-getting-dnx-on-your-windows-machine/</p>
+
+<p>资料显示需要powershell v4.0和安装Visual C++ 2013 redistributable package，实际测试”print helloworld”并不需要这些条件，同时配置步骤也可以简化，以下为简化的配置步骤：</p>
+
+<p>测试系统：Win8 x86</p>
+
+<h3 id="1下载并安装microsoft-net-framework-452">1、下载并安装Microsoft .NET Framework 4.5.2：</h3>
+
+<p><strong>下载地址：</strong></p>
+
+<p>https://www.microsoft.com/zh-CN/download/confirmation.aspx?id=42643</p>
+
+<h3 id="2安装dnvm">2、安装DNVM</h3>
+
+<p><strong>cmd：</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>powershell -NoProfile -ExecutionPolicy unrestricted -Command "&amp;{$Branch='’'dev';iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/aspnet/Home/dev/dnvminstall.ps1'))}"
+</code></pre></div></div>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/1-1.png" alt="Alt text" /></p>
+
+<h3 id="3安装dnx">3、安装DNX</h3>
+
+<p><code class="language-plaintext highlighter-rouge">打开新的cmd</code></p>
+
+<p><strong>cmd：</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dnvm list 
+</code></pre></div></div>
+
+<p>输入y，安装dnx</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/1-2.png" alt="Alt text" /></p>
+
+<p><strong>cmd:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dnvm install latest -Unstable -Persistent
+</code></pre></div></div>
+
+<p><strong>cmd:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dnx
+</code></pre></div></div>
+
+<p>将会看到dnx的操作说明</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/1-3.png" alt="Alt text" /></p>
+
+<h3 id="4更新dnx和dnvm-bits">4、更新DNX和DNVM bits</h3>
+
+<p><strong>cmd:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dnvm upgrade
+dnvm update-self
+</code></pre></div></div>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/1-4.png" alt="Alt text" /></p>
+
+<h3 id="5配置package">5、配置Package</h3>
+
+<p><code class="language-plaintext highlighter-rouge">新建文件夹test</code></p>
+
+<p><strong>cmd：</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd c:\test
+dnu restore -s https://www.myget.org/F/aspnetvnext
+</code></pre></div></div>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/1-5.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>在<code class="language-plaintext highlighter-rouge">C:\Windows\System32</code>直接输入<code class="language-plaintext highlighter-rouge">dnu restore -s https://www.myget.org/F/aspnetvnext</code>会报错，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/1-6.png" alt="Alt text" /></p>
+
+<h3 id="6添加脚本文件">6、添加脚本文件</h3>
+
+<p>新建文件Program.cs，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+public class Program
+{
+    public static void Main()
+    {
+        Console.WriteLine("Hello World");
+    }
+}
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>class名必须为Program，否则报错</p>
+
+<p>新建文件project.json，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+    "dependencies":{
+
+    },
+    "commands":{
+        "test":"test"
+    },
+    "frameworks":{
+        "dnx451":{},
+        "dnxcore50":{
+            "dependencies":{
+                "System.Console":"4.0.0-beta-*"
+            }
+        }
+    }
+}
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>project.json中”commands”内的”test”需要同文件夹名称test对应</p>
+
+<p><strong>注：</strong></p>
+
+<p>中文系统的浏览器复制https://blogs.msdn.microsoft.com/sujitdmello/2015/04/23/step-by-step-installation-instructions-for-getting-dnx-on-your-windows-machine/中的示例代码为unicode格式，直接使用会报错，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/1-7.png" alt="Alt text" /></p>
+
+<p>需要将其中的Unicode字符转化</p>
+
+<h3 id="7测试脚本">7、测试脚本</h3>
+
+<p><strong>cmd:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dnu restore 
+</code></pre></div></div>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/1-8.png" alt="Alt text" /></p>
+
+<p><strong>cmd:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dnx test
+</code></pre></div></div>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/1-9.png" alt="Alt text" /></p>
+
+<p><strong>注:</strong></p>
+
+<p>如果仅测试上述代码，只需完成步骤3即可</p>
+
+<h3 id="8win10-device-guard测试">8、Win10 Device Guard测试</h3>
+
+<p>dnx.exe测试成功后，接下来需要找到dnx.exe在Win10上使用需要包含哪些支持文件，最直观的方法可借助于ProcessMonitor</p>
+
+<p>使用ProcessMonitor获取dnx.exe在运行时的操作，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/2-1.png" alt="Alt text" /></p>
+
+<p>找到关键目录：</p>
+
+<p><code class="language-plaintext highlighter-rouge">C:\Users\a\.dnx\runtimes\dnx-clr-win-x86.1.0.0-rc1-update2\bin\</code></p>
+
+<p>经实际测试，在Win10上使用，只需要该目录下的部分文件，大小为<code class="language-plaintext highlighter-rouge">7.44MB</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>这是Matt Nelson@enigma0x3留给读者的作业</p>
+
+<p>文件列表如下：</p>
+
+<ul>
+  <li>dnx.clr.dll</li>
+  <li>dnx.exe</li>
+  <li>dnx.onecore.dll</li>
+  <li>Microsoft.CodeAnalysis.CSharp.dll</li>
+  <li>Microsoft.CodeAnalysis.dll</li>
+  <li>Microsoft.Dnx.ApplicationHost.dll</li>
+  <li>Microsoft.Dnx.Compilation.Abstractions.dll</li>
+  <li>Microsoft.Dnx.Compilation.CSharp.Abstractions.dll</li>
+  <li>Microsoft.Dnx.Compilation.CSharp.Common.dll</li>
+  <li>Microsoft.Dnx.Compilation.CSharp.dll</li>
+  <li>Microsoft.Dnx.Compilation.dll</li>
+  <li>Microsoft.Dnx.Host.Clr.dll</li>
+  <li>Microsoft.Dnx.Host.dll</li>
+  <li>Microsoft.Dnx.Loader.dll</li>
+  <li>Microsoft.Dnx.Runtime.dll</li>
+  <li>Microsoft.Extensions.PlatformAbstractions.dll</li>
+  <li>System.Collections.Immutable.dll</li>
+  <li>System.Reflection.Metadata.dll</li>
+  <li>vcruntime140.dll(也可忽略，但会报错，不影响代码执行)</li>
+</ul>
+
+<p>该目录下的这些文件不需要：</p>
+
+<ul>
+  <li>dnu.cmd</li>
+  <li>dnx.win32.dll</li>
+  <li>Microsoft.Dnx.Compilation.DesignTime.dll</li>
+  <li>Microsoft.Dnx.DesignTimeHost.Abstractions.dll</li>
+  <li>Microsoft.Dnx.dll</li>
+  <li>Microsoft.Dnx.Host.Mono.dll</li>
+  <li>Microsoft.Dnx.Runtime.Internals.dll</li>
+</ul>
+
+<p>如图，由于dnx.exe包含微软的签名证书，所以在Device Guard UMCI(user mode code integrity)开启的环境中仍具有执行权限</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/2-2.png" alt="Alt text" /></p>
+
+<p>绕过成功</p>
+
+<h2 id="0x03-rcsiexe">0x03 rcsi.exe</h2>
+<hr />
+
+<p>rcsi.exe内置于Microsoft “Roslyn” CTP中，包含微软数字签名</p>
+
+<p>Microsoft “Roslyn” CTP下载地址：
+https://www.microsoft.com/en-us/download/details.aspx?id=34685&amp;tduid=(24d3dfde6075d394de05e49e871fa656)(256380)(2459594)(TnL5HPStwNw-qGm27mnsJb9VbqZPmTLajQ)()</p>
+
+<p>安装前提：</p>
+<ul>
+  <li>安装Visual Studio 2012</li>
+  <li>安装VS2012 SDK</li>
+</ul>
+
+<h3 id="1实际测试">1、实际测试</h3>
+<p>测试系统：Win8.1 x86
+安装Visual Studio 2012、VS2012 SDK、Microsoft “Roslyn” CTP</p>
+
+<h3 id="2执行代码">2、执行代码</h3>
+<p>rcsi.exe的路径为：</p>
+
+<p><code class="language-plaintext highlighter-rouge">C:\Program Files\Microsoft Roslyn CTP\Binaries</code></p>
+
+<p>新建文件test.csx，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+Console.WriteLine("Hello World");
+Console.ReadLine();
+</code></pre></div></div>
+
+<p><strong>cmd:</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"C:\Program Files\Microsoft Roslyn CTP\Binaries\rcsi.exe" test.csx
+</code></pre></div></div>
+
+<p>如图，成功执行C#代码</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/3-1.png" alt="Alt text" /></p>
+
+<p>rcsi.exe同csi.exe类似，可以用来执行c#代码，不同点在于csi.exe支持交互，而rcsi.exe不能</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/3-2.png" alt="Alt text" /></p>
+
+<h3 id="3win10-device-guard测试">3、Win10 Device Guard测试</h3>
+
+<p>rcsi.exe在Win10上运行同样需要支持文件
+同样使用ProcessMonitor获取rcsi.exe在运行时的操作，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/3-3.png" alt="Alt text" /></p>
+
+<p>找到rcsi.exe需要的支持文件如下：</p>
+
+<ul>
+  <li>C:\Windows\Microsoft.NET\assembly\GAC_MSIL\Roslyn.Compilers.CSharp\v4.0_1.2.0.0__31bf3856ad364e35\Roslyn.Compilers.CSharp.dll</li>
+  <li>C:\Windows\Microsoft.NET\assembly\GAC_MSIL\Roslyn.Compilers\v4.0_1.2.0.0__31bf3856ad364e35\Roslyn.Compilers.dll</li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>这也是Matt Nelson@enigma0x3留给读者的作业</p>
+
+<p>在Win10下测试成功，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-25/3-4.png" alt="Alt text" /></p>
+
+<h2 id="0x04-防御">0x04 防御</h2>
+<hr />
+
+<p>参照Matt Graeber的方法，更新Device Guard Bypass Mitigation Rules，可分别拦截利用WinDbg/CDB、csi.exe、dnx.exe和rcsi.exe的代码执行</p>
+
+<p>参考地址如下：</p>
+
+<p>http://www.exploit-monday.com/2016/09/using-device-guard-to-mitigate-against.html</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文对dnx.exe和rcsi.exe的利用方法做了介绍，截至目前共有四种绕过Device Guard的方法，相信未来会有更多的方法被发现，与此同时，防御手段也需要随之升级。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

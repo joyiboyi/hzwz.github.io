@@ -1,0 +1,310 @@
+I"�<<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Autodiscover是Exchange的一个服务，用来简化客户端应用程序的配置流程。用户只需要输入自己的电子邮件地址和密码，就能够通过Autodiscover服务获取运行客户端应用程序所需的配置信息。</p>
+
+<p>在渗透测试中，当我们获得了一个邮件用户的凭据，能够通过Autodiscover服务挖掘出更多有价值的信息。</p>
+
+<p>本文将要介绍通过Autodiscover服务读取配置信息的方法，开源实现代码，分享利用思路。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>通过Autodiscover进行口令爆破的方法</li>
+  <li>通过Autodiscover读取配置信息的方法</li>
+  <li>通过Autodiscover访问Exchange邮件资源的方法</li>
+</ul>
+
+<h2 id="0x02-通过autodiscover进行口令爆破的方法">0x02 通过Autodiscover进行口令爆破的方法</h2>
+<hr />
+
+<p>对应的URL：<code class="language-plaintext highlighter-rouge">https://&lt;domain&gt;/autodiscover/autodiscover.xml</code></p>
+
+<p>验证方式：NTLM Over HTTP Protocol(分别支持明文和NTLM hash登录)</p>
+
+<p>登录失败返回401</p>
+
+<p>登录成功返回200，内容示例:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006"&gt;
+  &lt;Response&gt;
+    &lt;Error Time="01:37:11.6638388" Id="2403276782"&gt;
+      &lt;ErrorCode&gt;600&lt;/ErrorCode&gt;
+      &lt;Message&gt;Invalid Request&lt;/Message&gt;
+      &lt;DebugData /&gt;
+    &lt;/Error&gt;
+  &lt;/Response&gt;
+&lt;/Autodiscover&gt;
+</code></pre></div></div>
+
+<p>我们可以看到，Autodiscover的验证流程同EWS基本相同，所以在代码实现上也可以参照之前的代码<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/checkEWS.py">checkEWS.py</a></p>
+
+<p>这里不再重复介绍，具体细节可参考之前的文章《渗透技巧——Pass the Hash with Exchange Web Service》</p>
+
+<p>实现代码可参照<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/checkAutodiscover.py">checkAutodiscover.py</a>中的checkautodiscover功能</p>
+
+<h2 id="0x03-通过autodiscover读取配置信息的方法">0x03 通过Autodiscover读取配置信息的方法</h2>
+<hr />
+
+<p>直接通过浏览器访问<code class="language-plaintext highlighter-rouge">https://&lt;domain&gt;/autodiscover/autodiscover.xml</code></p>
+
+<p>无法获得配置信息，浏览器返回的内容示例:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006"&gt;
+  &lt;Response&gt;
+    &lt;Error Time="01:37:11.6638388" Id="2403276782"&gt;
+      &lt;ErrorCode&gt;600&lt;/ErrorCode&gt;
+      &lt;Message&gt;Invalid Request&lt;/Message&gt;
+      &lt;DebugData /&gt;
+    &lt;/Error&gt;
+  &lt;/Response&gt;
+&lt;/Autodiscover&gt;
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-7-17/2-1.png" alt="Alt text" /></p>
+
+<p>为了能够读取配置信息，我们需要以下操作：</p>
+
+<p>1.发送GET包，Header中加入NTML认证信息，示例：<code class="language-plaintext highlighter-rouge">Authorization: NTLM xxxxxxxxxxx</code></p>
+
+<p>URL为<code class="language-plaintext highlighter-rouge">/autodiscover/autodiscover.xml</code></p>
+
+<p>指定编码格式为gzip，格式如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Accept-Encoding: gzip
+</code></pre></div></div>
+
+<p>2.接收返回结果</p>
+
+<p>提示<code class="language-plaintext highlighter-rouge">401 Unauthorized</code></p>
+
+<p>3.发送POST包</p>
+
+<p>在Header中完成NTML认证，同时Header还需要额外添加以下信息(X-Anchormailbox)，指定当前用户的邮箱地址，示例：<code class="language-plaintext highlighter-rouge">X-Anchormailbox: test1@test.com</code></p>
+
+<p>POST的内容格式如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;&lt;Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006"&gt;
+&lt;Request&gt;&lt;EMailAddress&gt;{EMailAddress}&lt;/EMailAddress&gt;
+&lt;AcceptableResponseSchema&gt;http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a&lt;/AcceptableResponseSchema&gt;
+&lt;/Request&gt;&lt;/Autodiscover&gt;
+</code></pre></div></div>
+
+<p>其中，<code class="language-plaintext highlighter-rouge">{EMailAddress}</code>为当前用户的邮箱地址</p>
+
+<p>完整数据包示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>POST /autodiscover/autodiscover.xml HTTP/1.1
+Host: 192.168.1.1
+Content-Length: 351
+Authorization: NTLM TlRMTVNTUAADAAAAGAAYAHYAAACuAK4AjgAAABYAFgBAAAAACgAKAFYAAAAWABYAYAAAAAAAAAA8AQAABQKIoDEAOQAyAC4AMQA4ADgALgAxAC4AMQB0AGUAcwB0ADEAMQA5ADIALgAxADYAOAAuADEALgAxABlZOdtFpFcfJQY7ysotO0RJVlczdGVrae1Bq6PIhSQWZ5F4VJTTyL8BAQAAAAAAAOiYz4Q0XtYBSVZXM3Rla2kAAAAAAgAIAFQARQBTAFQAAQAGAEQAQwAxAAQAEABAAGUAcwB0AC5AYwBvAG0AAwAYAGQAYwAxAC5AdABlAHMAdAAuAGMAbwBtAAUAEAB0AGUAcwB0AC4AYwBvAG0ABwAIAOiYz3Q0XtYBCQAQAGMAaQBmAHMALwBEAEMAMQAAAAAAAAAAAA==
+Content-type: text/xml
+X-Anchormailbox: test1@test.com
+X-Mapihttpcapability: 1
+Accept-Encoding: gzip
+
+&lt;?xml version="1.0" encoding="utf-8"?&gt;&lt;Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006"&gt;
+&lt;Request&gt;&lt;EMailAddress&gt;test1@test.com&lt;/EMailAddress&gt;
+&lt;AcceptableResponseSchema&gt;http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a&lt;/AcceptableResponseSchema&gt;
+&lt;/Request&gt;&lt;/Autodiscover&gt;
+</code></pre></div></div>
+
+<p>4.接收返回结果</p>
+
+<p>提示<code class="language-plaintext highlighter-rouge">200 OK</code></p>
+
+<p>返回的Body内容为gzip压缩格式，需要进行解码</p>
+
+<p>不同版本的Exchange获得的内容有所不同，部分通用的内容如下：</p>
+
+<ul>
+  <li>DisplayName</li>
+  <li>LegacyDN</li>
+  <li>AutoDiscoverSMTPAddress</li>
+</ul>
+
+<p>其中值得注意的是<code class="language-plaintext highlighter-rouge">AD</code>，代表域控制器的计算机名，在Exchange 2013及更老的版本能够获得<code class="language-plaintext highlighter-rouge">AD</code>的信息，Exchange2016无法获取</p>
+
+<p>以上的实现代码可参照<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/checkAutodiscover.py">checkAutodiscover.py</a>中的checkautodiscover功能</p>
+
+<p>在之前的文章《渗透技巧——通过Exchange ActiveSync访问内部文件共享》介绍了通过Exchange ActiveSync访问域内共享目录SYSVOL的方法，这里的路径需要指定域控制器的计算机名</p>
+
+<p>正确的写法：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>\\dc1\SYSVOL\test.com\Policies\{6AC1786C-016F-11D2-945F-00C04fB984F9}\GPT.INI
+</code></pre></div></div>
+
+<p>错误的写法：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>\\test.com\SYSVOL\test.com\Policies\{6AC1786C-016F-11D2-945F-00C04fB984F9}\GPT.INI
+</code></pre></div></div>
+
+<p>将以上两点进行结合，就能够完整的实现读取域内共享目录SYSVOL的文件</p>
+
+<p>为了能够支持Exchange2016，这里介绍一种更为通用（支持所有版本）获取域控制器计算机名的方法：通过EWS读取当前用户的配置信息，进而获得域控制器的计算机名</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/client-developer/exchange-web-services/how-to-get-user-settings-from-exchange-by-using-autodiscover</p>
+
+<p>这里需要注意请求的url为<code class="language-plaintext highlighter-rouge">/autodiscover/autodiscover.svc</code>，而不是<code class="language-plaintext highlighter-rouge">/EWS/Exchange.asmx</code></p>
+
+<p>发送的SOAP格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;soap:Envelope xmlns:a="http://schemas.microsoft.com/exchange/2010/Autodiscover" xmlns:wsa="http://www.w3.org/2005/08/addressing" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+  &lt;soap:Header&gt;
+    &lt;a:RequestedServerVersion&gt;Exchange2013_SP1&lt;/a:RequestedServerVersion&gt;
+    &lt;wsa:Action&gt;http://schemas.microsoft.com/exchange/2010/Autodiscover/Autodiscover/GetUserSettings&lt;/wsa:Action&gt;
+    &lt;wsa:To&gt;https://{domain}/autodiscover/autodiscover.svc&lt;/wsa:To&gt;
+  &lt;/soap:Header&gt;
+  &lt;soap:Body&gt;
+    &lt;a:GetUserSettingsRequestMessage xmlns:a="http://schemas.microsoft.com/exchange/2010/Autodiscover"&gt;
+      &lt;a:Request&gt;
+        &lt;a:Users&gt;
+          &lt;a:User&gt;
+            &lt;a:Mailbox&gt;{mail}&lt;/a:Mailbox&gt;
+          &lt;/a:User&gt;
+        &lt;/a:Users&gt;
+        &lt;a:RequestedSettings&gt;
+          &lt;a:Setting&gt;UserDisplayName&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;UserDN&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;UserDeploymentId&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;InternalMailboxServer&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;MailboxDN&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;PublicFolderServer&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;ActiveDirectoryServer&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;ExternalMailboxServer&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;EcpDeliveryReportUrlFragment&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;EcpPublishingUrlFragment&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;EcpTextMessagingUrlFragment&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;ExternalEwsUrl&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;CasVersion&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;EwsSupportedSchemas&lt;/a:Setting&gt;
+          &lt;a:Setting&gt;GroupingInformation&lt;/a:Setting&gt;
+        &lt;/a:RequestedSettings&gt;
+      &lt;/a:Request&gt;
+    &lt;/a:GetUserSettingsRequestMessage&gt;
+  &lt;/soap:Body&gt;
+&lt;/soap:Envelope&gt;
+</code></pre></div></div>
+
+<p>这里需要注意<code class="language-plaintext highlighter-rouge">{domain}</code>必须为域名，不能是IP</p>
+
+<p>返回的结果中，<code class="language-plaintext highlighter-rouge">ActiveDirectoryServer</code>表示域控制器的计算机名，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-7-17/2-2.png" alt="Alt text" /></p>
+
+<p>实现代码可参照<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/checkAutodiscover.py">checkAutodiscover.py</a>中的getusersetting功能</p>
+
+<h2 id="0x04-通过autodiscover访问exchange邮件资源的方法">0x04 通过Autodiscover访问Exchange邮件资源的方法</h2>
+<hr />
+
+<p>通过Autodiscover完成身份认证以后，可以使用MAPI OVER HTTP访问Exchange邮件资源</p>
+
+<p><strong>注：</strong></p>
+
+<p>MAPI OVER HTTP是Outlook同Exchange2016之间默认的通信协议</p>
+
+<p>MAPI OVER HTTP是Exchange Server 2013 Service Pack 1 (SP1)中实现的新传输协议，用来替代RPC OVER HTTP(也称作Outlook Anywhere)</p>
+
+<p>Exchange2013默认没有启用MAPI OVER HTTP，Outlook同Exchange之间的通信协议使用RPC OVER HTTP</p>
+
+<p>MAPI OVER HTTP的资料可参考：</p>
+
+<p>https://docs.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-oxcmapihttp/d502edcf-0b22-42f2-8500-019f00d60245</p>
+
+<p>https://interoperability.blob.core.windows.net/files/MS-OXCMAPIHTTP/%5BMS-OXCMAPIHTTP%5D.pdf</p>
+
+<p><a href="https://github.com/sensepost/ruler">ruler</a>也支持MAPI OVER HTTP的部分功能，可以作为参考</p>
+
+<h3 id="1执行命令">1.执行命令</h3>
+
+<p>流程：</p>
+
+<ol>
+  <li>connect</li>
+  <li>execute</li>
+  <li>disconnect</li>
+</ol>
+
+<h3 id="2通过offline-address-book-oab读取globaladdresslist">2.通过Offline Address Book (OAB)读取GlobalAddressList</h3>
+
+<p>使用<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/checkAutodiscover.py">checkAutodiscover.py</a></p>
+
+<h4 id="1通过autodiscover获得oaburl">(1)通过Autodiscover获得OABUrl</h4>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python checkAutodiscover.py 192.168.1.1 443 plaintext test1@test.com DomainUser123! checkautodiscover
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-7-17/3-1.png" alt="Alt text" /></p>
+
+<p>获得OABUrl为<code class="language-plaintext highlighter-rouge">https://dc1.test.com/OAB/9e3fa457-ebf1-40e4-b265-21d09a62872b/</code></p>
+
+<h4 id="2访问oaburl从中找到default-global-address对应的lzx文件名">(2)访问OABUrl，从中找到Default Global Address对应的lzx文件名</h4>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python checkAutodiscover.py 192.168.1.1 443 plaintext test1@test.com DomainUser123! checkoab
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-7-17/3-2.png" alt="Alt text" /></p>
+
+<p>获得Default Global Address为<code class="language-plaintext highlighter-rouge">4667c322-5c08-4cda-844a-253ff36b4a6a-data-5.lzx</code></p>
+
+<h4 id="3下载lxz文件">(3)下载lxz文件</h4>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python checkAutodiscover.py 192.168.1.1 443 plaintext test1@test.com DomainUser123! downloadlzx
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-7-17/3-3.png" alt="Alt text" /></p>
+
+<h4 id="4对lxz文件进行解码">(4)对lxz文件进行解码</h4>
+
+<p>使用工具<a href="https://github.com/kyz/libmspack">oabextract</a></p>
+
+<p>下载后需要进行安装</p>
+
+<p>编译好可在Kali下直接使用的版本下载地址：http://x2100.icecube.wisc.edu/downloads/python/python2.6.Linux-x86_64.gcc-4.4.4/bin/oabextract</p>
+
+<p>将lzx文件转换为oab文件的命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>oabextract 4667c322-5c08-4cda-844a-253ff36b4a6a-data-5.lzx gal.oab
+</code></pre></div></div>
+
+<p>提取出GAL的命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>strings gal.oab|grep SMTP
+</code></pre></div></div>
+
+<p>结果如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-7-11/3-2.png" alt="Alt text" /></p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了通过Autodiscover进行口令爆破、读取配置信息和访问Exchange邮件资源的方法，开源实现代码，分享利用思路。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

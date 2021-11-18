@@ -1,0 +1,641 @@
+I"�W<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在渗透测试中，经常会使用到端口转发和代理。</p>
+
+<p>端口转发是转发一个网络端口从一个网络节点到另一个网络节点的行为。</p>
+
+<p>实际应用中需要考虑两种情况：</p>
+
+<ul>
+  <li>Client-&gt;Transit server-&gt;Server：Client能够正向连接Transit server。Transit server直接转发即可</li>
+  <li>Client&lt;-Transit server-&gt;Server：Client无法正向连接Transit server，但Transit server能够反向连接Client。</li>
+</ul>
+
+<p>如果Client要对Server的多个端口进行扫描(或是多个Server的多个端口)，逐个配置转发规则很不现实。</p>
+
+<p>为了提高效率，这里可以使用代理，配置一次规则即可。</p>
+
+<p>本文将对常用方法和工具进行整理总结，分门别类，区分正向和反向连接，区分转发和代理，分析其中的联系和区别，并给出应用场景，以作参考。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>针对Windows系统和Linux系统(Ubuntu和CentOS)下的方法</li>
+  <li>端口转发——正向连接的方法</li>
+  <li>端口转发——反向连接的方法</li>
+  <li>正向代理的方法</li>
+  <li>反向代理的方法</li>
+  <li>以上方法的应用场景</li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>Go语言支持跨平台编译，所以本文更侧重于介绍Go语言实现的工具</p>
+
+<h2 id="0x02-端口转发正向连接">0x02 端口转发——正向连接</h2>
+<hr />
+
+<h3 id="0应用场景">0、应用场景</h3>
+
+<h4 id="1流量转发的跳板">1.流量转发的跳板</h4>
+
+<p>用于隐藏真实的服务器地址</p>
+
+<p>CIA Hive Beacon Infrastructure中端口转发使用的是Linux的iptables</p>
+
+<p>如下图中的(2)</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-16/0.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>中转服务器的搭建可参考之前的文章<a href="https://3gstudent.github.io/CIA-Hive-Beacon-Infrastructure%E5%A4%8D%E7%8E%B01-%E4%BD%BF%E7%94%A8Apache-mod_rewrite%E5%AE%9E%E7%8E%B0http%E6%B5%81%E9%87%8F%E5%88%86%E5%8F%91">《CIA Hive Beacon Infrastructure复现1——使用Apache mod_rewrite实现http流量分发》</a>和<a href="https://3gstudent.github.io/CIA-Hive-Beacon-Infrastructure%E5%A4%8D%E7%8E%B02-%E4%BD%BF%E7%94%A8Apache-mod_rewrite%E5%AE%9E%E7%8E%B0https%E6%B5%81%E9%87%8F%E5%88%86%E5%8F%91">《CIA Hive Beacon Infrastructure复现2——使用Apache mod_rewrite实现https流量分发》</a></p>
+
+<h4 id="2建立通道">2.建立通道</h4>
+
+<p>连接内网服务器的指定端口</p>
+
+<p>Client能够正向连接到Transit server</p>
+
+<h3 id="1测试环境">1、测试环境</h3>
+
+<p>Client: 192.168.111.136</p>
+
+<p>Server: 192.168.111.103</p>
+
+<p>网络连接如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/2-1.png" alt="Alt text" /></p>
+
+<p>使用nc测试网络连接</p>
+
+<p>Server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -lvp 4444
+</code></pre></div></div>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -vv 192.168.111.103 4444
+</code></pre></div></div>
+
+<p>Client连接成功，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/2-2.png" alt="Alt text" /></p>
+
+<h3 id="2windows系统下的端口转发方法">2、Windows系统下的端口转发方法</h3>
+
+<p>Transit server: 192.168.111.132</p>
+
+<p>网络连接如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/2-3.png" alt="Alt text" /></p>
+
+<h4 id="1使用netsh实现端口转发需要管理员权限">1、使用netsh实现端口转发(需要管理员权限)</h4>
+
+<p>(1)添加转发规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh interface portproxy add v4tov4 listenaddress=192.168.111.132 listenport=7777 connectaddress=192.168.111.103  connectport=4444
+</code></pre></div></div>
+
+<p>(2)添加防火墙入站规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh advfirewall firewall add rule name="transit test" protocol=TCP dir=in localport=7777 action=allow
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>默认配置允许出站并阻挡入站通信，所以此处仅需要添加入站规则</p>
+
+<p>测试网络连接：</p>
+
+<p>Server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -lvp 4444
+</code></pre></div></div>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -vv 192.168.111.132 7777
+</code></pre></div></div>
+
+<p>Client连接成功</p>
+
+<p>(3)查看端口转发规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh interface portproxy show all
+</code></pre></div></div>
+
+<p>(4)清除端口转发规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh interface portproxy delete v4tov4 listenaddress=192.168.111.132 listenport=7777
+</code></pre></div></div>
+
+<p>(5)清除防火墙规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh advfirewall firewall delete rule name="transit test"
+</code></pre></div></div>
+
+<h4 id="2使用rinetd实现端口转发">2、使用rinetd实现端口转发</h4>
+
+<p>下载地址：</p>
+
+<p>https://boutell.com/rinetd/http/rinetd.zip</p>
+
+<p>仅需要压缩包中的rinetd.exe</p>
+
+<p>(1)为rinetd.exe添加防火墙规则(管理员权限)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh advfirewall firewall add rule name="transit test2" dir=in program="c:\test\rinetd.exe" action=allow
+</code></pre></div></div>
+
+<p>(2)编写转发规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 0.0.0.0 7777 192.168.111.103 4444 &gt; conf.txt
+</code></pre></div></div>
+
+<p>(3)启动</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rinetd.exe -c c:\test\conf.txt
+</code></pre></div></div>
+
+<p>(4)清除防火墙规则(管理员权限)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh advfirewall firewall delete rule name="transit test2" dir=in program="c:\test\rinetd.exe"
+</code></pre></div></div>
+
+<h4 id="3使用htran实现端口转发">3、使用HTran实现端口转发</h4>
+
+<p><strong>注：</strong></p>
+
+<p>lcx同其功能类似</p>
+
+<p>源码来源于互联网，我在github做了备份，备份地址：</p>
+
+<p>https://raw.githubusercontent.com/3gstudent/test/master/HTran.cpp</p>
+
+<p>(1)为HTran.exe添加防火墙规则(管理员权限)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh advfirewall firewall add rule name="transit test3" dir=in program="c:\test\HTran.exe" action=allow
+</code></pre></div></div>
+
+<p>(2)开启转发功能</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>HTran.exe -tran 7777 192.168.111.103 4444
+</code></pre></div></div>
+
+<p>(3)清除防火墙规则(管理员权限)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh advfirewall firewall delete rule name="transit test3" dir=in program="c:\test\HTran.exe"
+</code></pre></div></div>
+
+<h4 id="4使用earthworm实现端口转发">4、使用EarthWorm实现端口转发</h4>
+
+<p>下载地址：</p>
+
+<p>https://github.com/rootkiter/EarthWorm</p>
+
+<p>(1)为ew_for_win_32.exe添加防火墙规则(管理员权限)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh advfirewall firewall add rule name="transit test4" dir=in program="c:\test\ew_for_win_32.exe" action=allow
+</code></pre></div></div>
+
+<p>(2)开启转发功能</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ew_for_win_32.exe -s lcx_tran -l 7777 -f 192.168.111.103 -g 4444
+</code></pre></div></div>
+
+<p>(3)清除防火墙规则(管理员权限)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh advfirewall firewall delete rule name="transit test4" dir=in program="c:\test\ew_for_win_32.exe"
+</code></pre></div></div>
+
+<h3 id="3linux系统ubuntu下的常用端口转发方法">3、Linux系统(Ubuntu)下的常用端口转发方法</h3>
+
+<p>Transit server: 192.168.111.102</p>
+
+<p>网络连接如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/2-4.png" alt="Alt text" /></p>
+
+<h4 id="1使用iptables实现端口转发">1、使用iptables实现端口转发</h4>
+
+<p>(1)开启转发功能</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 1 &gt;/proc/sys/net/ipv4/ip_forward
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>该命令立即生效，重启失效</p>
+
+<p>(2)添加转发规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>iptables -t nat -A PREROUTING -p tcp -d 192.168.111.102 --dport 8888 -j DNAT --to-destination 192.168.111.103:4444
+iptables -t nat -A POSTROUTING -p tcp -d 192.168.111.103 --dport 4444 -j SNAT --to-source 192.168.111.102
+</code></pre></div></div>
+
+<p>(3)查看转发规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>iptables -L -t nat --line-number
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/2-5.png" alt="Alt text" /></p>
+
+<p>测试网络连接：</p>
+
+<p>Server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -lvp 4444
+</code></pre></div></div>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -vv 192.168.111.102 8888
+</code></pre></div></div>
+
+<p>Client连接成功</p>
+
+<p>(4)清除规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>iptables -F -t nat
+</code></pre></div></div>
+
+<p>(5)保存规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>iptables-save &gt; /etc/iptables.up.rules
+</code></pre></div></div>
+
+<p>(6)恢复规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>iptables-restore &lt; /etc/iptables.up.rules
+</code></pre></div></div>
+
+<h4 id="2使用rinetd实现端口转发-1">2、使用rinetd实现端口转发</h4>
+
+<p>(1)编译安装</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wget http://www.boutell.com/rinetd/http/rinetd.tar.gz
+tar zxvf rinetd.tar.gz
+cd rinetd
+make
+</code></pre></div></div>
+
+<p>(2)编写转发规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 0.0.0.0 8888 192.168.111.103 4444 &gt; /etc/rinetd.conf
+</code></pre></div></div>
+
+<p>(3)启动</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./rinetd.exe
+</code></pre></div></div>
+
+<p>(4)结束进程</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>pkill -9 rinetd
+</code></pre></div></div>
+
+<h4 id="3使用htran实现端口转发-1">3、使用HTran实现端口转发</h4>
+
+<p>Linux版HTran(lcx)的源码参考如下地址：</p>
+
+<p>https://github.com/windworst/LCX</p>
+
+<p>需要使用gcc重新编译</p>
+
+<p>(1)开启转发功能</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./lcx -tran 8888 192.168.111.103 4444
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>go语言编写的HTran(lcx)，优点是跨平台，支持Windows和Linux</p>
+
+<p>下载地址：</p>
+
+<p>https://github.com/cw1997/NATBypass</p>
+
+<h4 id="4使用earthworm实现端口转发-1">4、使用EarthWorm实现端口转发</h4>
+
+<p>下载地址：</p>
+
+<p>https://github.com/rootkiter/EarthWorm</p>
+
+<p>未开源</p>
+
+<p>(1)开启转发功能</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>./ew_for_linux -s lcx_tran -l 8888 -f 192.168.111.103 -g 4444
+</code></pre></div></div>
+
+<h3 id="4linux系统centos下的常用端口转发方法">4、Linux系统(CentOS)下的常用端口转发方法</h3>
+
+<p>Transit server: 192.168.111.105</p>
+
+<p>网络连接如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/2-6.png" alt="Alt text" /></p>
+
+<h4 id="1使用iptables实现端口转发-1">1、使用iptables实现端口转发</h4>
+
+<p>(1)开启转发功能</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>echo 1 &gt;/proc/sys/net/ipv4/ip_forward
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>该命令立即生效，系统重启失效</p>
+
+<p>(2)安装iptables</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>systemctl stop firewalld  
+systemctl mask firewalld  
+yum install iptables-services
+systemctl enable iptables
+</code></pre></div></div>
+
+<p>(3)添加转发规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>iptables -t nat -A PREROUTING -p tcp -d 192.168.111.105 --dport 8888 -j DNAT --to-destination 192.168.111.103:4444
+iptables -t nat -A POSTROUTING -p tcp -d 192.168.111.103 --dport 4444 -j SNAT --to-source 192.168.111.105
+service iptables save
+service iptables restart
+service iptables status
+</code></pre></div></div>
+
+<p>(4)查看转发规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>iptables -L -t nat --line-number
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/2-7.png" alt="Alt text" /></p>
+
+<p>测试网络连接：</p>
+
+<p>Server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -lvp 4444
+</code></pre></div></div>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -vv 192.168.111.105 8888
+</code></pre></div></div>
+
+<p>Client连接成功</p>
+
+<p>(4)清除规则</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>iptables -F -t nat
+</code></pre></div></div>
+
+<h4 id="2使用rinetd实现端口转发-2">2、使用rinetd实现端口转发</h4>
+
+<p>同Ubuntu，此处省略</p>
+
+<h4 id="3使用htran实现端口转发-2">3、使用HTran实现端口转发</h4>
+
+<p>同Ubuntu，此处省略</p>
+
+<h4 id="4使用earthworm实现端口转发-2">4、使用EarthWorm实现端口转发</h4>
+
+<p>同Ubuntu，此处省略</p>
+
+<h2 id="0x03-端口转发反向连接">0x03 端口转发——反向连接</h2>
+<hr />
+
+<h3 id="0应用场景-1">0、应用场景</h3>
+
+<h4 id="1建立通道">1.建立通道</h4>
+
+<p>连接内网服务器的指定端口</p>
+
+<p>测试环境如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/3-1.png" alt="Alt text" /></p>
+
+<p>已有Transit server权限，想要访问Server的3389端口</p>
+
+<p>Client无法正向连接到Transit server，但Transit server能够反向连接到Client</p>
+
+<p>iptables和rinetd不再适用</p>
+
+<h4 id="1使用htran">1、使用HTran</h4>
+
+<p>支持Windows和Linux</p>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>HTran -listen 1111 2222
+</code></pre></div></div>
+
+<p>Transit server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>HTran -slave 1.1.1.1 1111 10.0.0.2 3389
+</code></pre></div></div>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -vv 127.0.0.1 2222
+</code></pre></div></div>
+
+<h4 id="2使用earthworm">2、使用EarthWorm</h4>
+
+<p>支持Windows和Linux</p>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ew -s lcx_listen -l 2222 -e 1111
+</code></pre></div></div>
+
+<p>Transit server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ew -s lcx_slave -d 1.1.1.1 -e 1111 -f 10.0.0.2 -g 3389
+</code></pre></div></div>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>nc -vv 127.0.0.1 2222
+</code></pre></div></div>
+
+<h2 id="0x04-正向代理">0x04 正向代理</h2>
+<hr />
+
+<h3 id="0应用场景-2">0、应用场景</h3>
+
+<h4 id="1内网扫描">1.内网扫描</h4>
+
+<p>对内网的多个端口进行扫描</p>
+
+<p>Client能够正向连接到Transit server</p>
+
+<p>测试环境如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/3-2.png" alt="Alt text" /></p>
+
+<p>要对Server1、Server2和Server3的端口进行扫描</p>
+
+<p>Socks4代理只支持TCP协议，而Socks5代理支持TCP协议和UDP协议，更加全面，所以本文只介绍实现Socks5代理的方法</p>
+
+<h4 id="1使用htran-1">1、使用HTran</h4>
+
+<p>网上流传HTran2.4支持Socks5代理，但我未找到开源代码，此处作一个标记</p>
+
+<h4 id="2使用earthworm-1">2、使用EarthWorm</h4>
+
+<p>Transit server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ew –s ssocksd –l 8888
+</code></pre></div></div>
+
+<p>Client使用代理工具连接Transit server的8888端口</p>
+
+<h4 id="3使用goproxy">3、使用goproxy</h4>
+
+<p>go实现的高性能http,https,websocket,tcp,udp,socks5,ss代理服务器,支持正向代理、反向代理、透明代理、内网穿透、TCP/UDP端口映射、SSH中转</p>
+
+<p>下载地址：</p>
+
+<p>https://github.com/snail007/goproxy/</p>
+
+<p>Transit server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>proxy socks -t tcp -p "0.0.0.0:8888"
+</code></pre></div></div>
+
+<p>Client使用代理工具连接Transit server的8888端口</p>
+
+<h3 id="4自己使用go实现">4、自己使用go实现</h3>
+
+<p>Windows系统安装Go：</p>
+
+<p>https://golang.org/dl/</p>
+
+<p>安装git：</p>
+
+<p>http://git-scm.com/downloads</p>
+
+<p>安装go-socks5：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>go get github.com/armon/go-socks5
+go build
+</code></pre></div></div>
+
+<p>test.go:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>package main
+import socks5 "github.com/armon/go-socks5"
+func main() {
+        conf := &amp;socks5.Config{}
+        server, err := socks5.New(conf)
+        if err != nil {
+          panic(err)
+        }
+        if err := server.ListenAndServe("tcp", "0.0.0.0:8888"); err != nil {
+          panic(err)
+        }
+}
+</code></pre></div></div>
+
+<p>编译</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>go build test.go
+</code></pre></div></div>
+
+<p>Client使用代理工具连接Transit server的8888端口</p>
+
+<h4 id="5使用regeorg">5、使用reGeorg</h4>
+
+<p>下载地址：</p>
+
+<p>https://github.com/NoneNotNull/reGeorg</p>
+
+<table>
+  <tbody>
+    <tr>
+      <td>针对web服务器，支持(aspx</td>
+      <td>ashx</td>
+      <td>jsp</td>
+      <td>php)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>注：</strong></p>
+
+<p>Windows下连接socks代理的工具可使用sockscap64</p>
+
+<p>Linux下连接socks代理的工具可使用proxychains</p>
+
+<h2 id="0x05-反向代理">0x05 反向代理</h2>
+<hr />
+
+<h3 id="0应用场景-3">0、应用场景</h3>
+
+<h4 id="1内网扫描-1">1.内网扫描</h4>
+
+<p>对内网的多个端口进行扫描</p>
+
+<p>测试环境如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-10-7/3-3.png" alt="Alt text" /></p>
+
+<p>Client无法正向连接到Transit server，但Transit server能够反向连接到Client</p>
+
+<p>要对Server1、Server2和Server3的端口进行扫描</p>
+
+<h4 id="1使用earthworm">1、使用EarthWorm</h4>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ew -s rcsocks -l 2222 -e 1111
+</code></pre></div></div>
+
+<p>Transit server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ew -s rssocks -d 1.1.1.1 -e 1111
+</code></pre></div></div>
+
+<p>使用代理工具连接Client的2222端口</p>
+
+<h4 id="2使用rsocks">2、使用rsocks</h4>
+
+<p>下载地址：</p>
+
+<p>https://github.com/brimstone/rsocks</p>
+
+<p>Go语言编写，支持Windows和Linux</p>
+
+<p>Client:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rsocks -listen :1111 -socks 127.0.0.1:2222
+</code></pre></div></div>
+
+<p>Transit server:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rsocks -connect 1.1.1.1:1111
+</code></pre></div></div>
+
+<p>使用代理工具连接Client的2222端口</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文对端口转发和代理的常用工具和方法进行整理总结，划分正向和反向连接两个类别，分别介绍了应用场景和常用工具，可作为实际应用的参考。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

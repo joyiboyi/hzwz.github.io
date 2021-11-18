@@ -1,0 +1,347 @@
+I"�/<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Shodan是一个针对网络设备的搜索引擎，通过Shodan API进行搜索，不仅数据更加丰富，而且能够配合自己的程序实现自动化分析。</p>
+
+<p>本文将要介绍Shodan API在使用过程需要注意的问题，分享使用心得和脚本开发技巧。</p>
+
+<h2 id="0x01-本文将要介绍以下内容">0x01 本文将要介绍以下内容</h2>
+<hr />
+
+<ul>
+  <li>Shodan API的简单使用</li>
+  <li>利用python调用Shodan API获得搜索结果</li>
+  <li>对搜索结果作进一步处理</li>
+  <li>三种积分(credits)的区别</li>
+  <li>通过Shodan官网导出搜索结果和进一步处理</li>
+</ul>
+
+<h2 id="0x02-shodan-api的简单使用">0x02 Shodan API的简单使用</h2>
+<hr />
+
+<h3 id="1注册账号获得api-key">1、注册账号，获得API Key</h3>
+
+<p>测试API Key为：<code class="language-plaintext highlighter-rouge">SkVS0RAbiTQpzzEsahqnq2Hv6SwjUfs3</code></p>
+
+<h3 id="2安装python包">2、安装python包</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>pip install shodan
+</code></pre></div></div>
+
+<h3 id="3通过shodan-cli获得搜索结果">3、通过Shodan CLI获得搜索结果</h3>
+
+<p>参考资料：</p>
+
+<p>https://cli.shodan.io/</p>
+
+<p><strong>注：</strong></p>
+
+<p>未付费只能获得100个搜索结果</p>
+
+<p>CLI全称为command-line interface，即shodan的命令行模式</p>
+
+<p>Windows系统下使用pip install在同级目录产生文件Shodan.exe</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-6-26/2-1.png" alt="Alt text" /></p>
+
+<h4 id="1-初始化">(1) 初始化</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>shodan init &lt;api key&gt;
+</code></pre></div></div>
+
+<p>实际命令为：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>shodan init SkVS0RAbiTQpzzEsahqnq2Hv6SwjUfs3
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-6-26/2-2.png" alt="Alt text" /></p>
+
+<h4 id="2-搜索指定内容apache的数量">(2) 搜索指定内容（apache）的数量</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>shodan count apache
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-6-26/2-3.png" alt="Alt text" /></p>
+
+<p>获得结果<code class="language-plaintext highlighter-rouge">23803090</code></p>
+
+<h4 id="3-搜索指定内容apache的信息">(3) 搜索指定内容（apache）的信息</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>shodan search --fields ip_str,port,org,hostnames apache
+</code></pre></div></div>
+
+<p>搜索关键词：apache</p>
+
+<p>输出：ip_str,port,org,hostnames</p>
+
+<h4 id="4-下载指定内容apache的搜索结果">(4) 下载指定内容（apache）的搜索结果</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>shodan download result apache
+</code></pre></div></div>
+
+<p>搜索关键词：apache</p>
+
+<p>保存文件名：result.json.gz</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-6-26/2-4.png" alt="Alt text" /></p>
+
+<h4 id="5-解析文件获得搜索结果">(5) 解析文件，获得搜索结果</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>shodan parse --fields ip_str,port,org --separator , result.json.gz
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-6-26/2-5.png" alt="Alt text" /></p>
+
+<h4 id="6-搜索指定ip的信息">(6) 搜索指定IP的信息</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>shodan host 189.201.128.250
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-6-26/2-6.png" alt="Alt text" /></p>
+
+<h2 id="0x03-三种积分credits的区别">0x03 三种积分(credits)的区别</h2>
+<hr />
+
+<p>Shodan共有三种积分(credits)：</p>
+
+<ul>
+  <li>Export credits</li>
+  <li>Query credits</li>
+  <li>Scan credits</li>
+</ul>
+
+<p>官方文档：</p>
+
+<p>https://help.shodan.io/the-basics/credit-types-explained</p>
+
+<p>简单理解：</p>
+
+<h3 id="export-credits">Export Credits</h3>
+
+<p>通过Shodan官网下载数据时使用</p>
+
+<p>1 export credit = 10,000 results</p>
+
+<p><strong>注：</strong></p>
+
+<p>导出一次结果消耗一个credit，无论获取到的结果有多少，最多为10000个结果</p>
+
+<p>月初不会更新</p>
+
+<h3 id="query-credits">Query Credits</h3>
+
+<p>调用Shodan API时使用</p>
+
+<p>1 query credit = 100 results</p>
+
+<p>月初更新，也就是说如果只买了一个月的会员，那么下一个月清零</p>
+
+<h3 id="scan-credits">Scan Credits</h3>
+
+<p>调用Shodan API时使用</p>
+
+<p>1 scan credit = 1 IP</p>
+
+<p>月初更新</p>
+
+<h2 id="0x04-通过python调用shodan-api获得搜索结果">0x04 通过python调用Shodan API获得搜索结果</h2>
+<hr />
+
+<p><strong>注：</strong></p>
+
+<p>未付费不仅无法使用搜索过滤条件，而且只能获得100个搜索结果</p>
+
+<h3 id="1-搜索指定内容apache的信息">(1) 搜索指定内容（apache）的信息</h3>
+
+<p>python代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import shodan
+SHODAN_API_KEY = "SkVS0RAbiTQpzzEsahqnq2Hv6SwjUfs3"
+api = shodan.Shodan(SHODAN_API_KEY)
+try:
+    results = api.search('Apache')
+    print 'Results found: %s' % results['total']
+    for result in results['matches']:         
+            print ("%s:%s|%s|%s"%(result['ip_str'],result['port'],result['location']['country_name'],result['hostnames']))
+except shodan.APIError, e:
+    print 'Error: %s' % e
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-6-26/3-1.png" alt="Alt text" /></p>
+
+<p>如果未付费，无法使用搜索过滤条件，例如<code class="language-plaintext highlighter-rouge">Apache country:"US"</code></p>
+
+<h3 id="2-搜索指定内容将获得的ip写入文件">(2) 搜索指定内容，将获得的IP写入文件</h3>
+
+<p>python代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import shodan
+SHODAN_API_KEY = "SkVS0RAbiTQpzzEsahqnq2Hv6SwjUfs3"
+api = shodan.Shodan(SHODAN_API_KEY)
+file_object = open('ip.txt', 'w')
+try:
+    results = api.search('Apache')
+    print 'Results found: %s' % results['total']
+    for result in results['matches']:         
+#            print result['ip_str']
+            file_object.writelines(result['ip_str']+'\n')
+except shodan.APIError, e:
+    print 'Error: %s' % e
+file_object.close()  
+</code></pre></div></div>
+
+<h3 id="3-通过命令行参数指定搜索条件将搜索到的ip写入文件">(3) 通过命令行参数指定搜索条件，将搜索到的IP写入文件</h3>
+
+<p>python代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import shodan
+import sys
+SHODAN_API_KEY = "SkVS0RAbiTQpzzEsahqnq2Hv6SwjUfs3"
+api = shodan.Shodan(SHODAN_API_KEY)
+if len(sys.argv)&lt;2:
+    print '[!]Wrong parameter'
+    sys.exit(0)
+print '[*]Search string: %s' % sys.argv[1]
+    
+file_object = open('ip.txt', 'w')
+try:
+    results = api.search(sys.argv[1])
+    print '[+]Results found: %s' % results['total']
+    for result in results['matches']:         
+#            print result['ip_str']
+            file_object.writelines(result['ip_str']+'\n')
+except shodan.APIError, e:
+    print 'Error: %s' % e
+file_object.close() 
+</code></pre></div></div>
+
+<p>命令行参数:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>search.py apache
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>如果搜索多个关键词，需要用引号将搜索条件包含，例如：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>search.py "apache country:US"
+</code></pre></div></div>
+
+<h3 id="4-读取文件中的ip列表反查ip信息">(4) 读取文件中的IP列表，反查IP信息</h3>
+
+<p>python代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import shodan
+import sys  
+reload(sys)  
+sys.setdefaultencoding('utf8')  
+SHODAN_API_KEY = "SkVS0RAbiTQpzzEsahqnq2Hv6SwjUfs3"
+api = shodan.Shodan(SHODAN_API_KEY)
+def searchip( str ):
+    try:
+        host = api.host(str)
+    except shodan.exception.APIError:
+        print "[!]No information available"
+        print "---------------------------------------------"
+        return
+    else:
+        # Print general info
+        try:
+            print "IP: %s\r\nOrganization: %s\r\nOperating System: %s" % (host['ip_str'], host.get('org', 'n/a'), host.get('os', 'n/a'))
+        except UnicodeEncodeError:
+            print "[!]UnicodeEncode Error\r\n"     
+        else:
+            # Print all banners
+            for item in host['data']:
+                print "Port: %s\r\nBanner: %s" % (item['port'], item['data'])
+        print "---------------------------------------------"   
+        return
+file_object = open('ip.txt', 'r')
+for line in file_object:
+    searchip(line)
+</code></pre></div></div>
+
+<h2 id="0x05-通过shodan官网下载搜索结果">0x05 通过Shodan官网下载搜索结果</h2>
+<hr />
+
+<p>通过Shodan官网下载数据时使用Export credits，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-6-26/4-1.png" alt="Alt text" /></p>
+
+<p>查询一次消耗一个export credit，无论结果有多少个，最多为10000个</p>
+
+<p>导出格式选择为json</p>
+
+<h3 id="1-从下载的json结果文件中提取ip">(1) 从下载的json结果文件中提取IP</h3>
+
+<p>python代码如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import json
+file_object = open("shodan_data.json", 'r')
+for line in file_object:
+    data = json.loads(line)
+    print (data["ip_str"])  
+file_object.close()
+</code></pre></div></div>
+
+<h3 id="2-从下载的json结果文件中提取指定国家的ip和端口">(2) 从下载的json结果文件中提取指定国家的IP和端口</h3>
+
+<p>国家代号在二级元素中，对应结构：<code class="language-plaintext highlighter-rouge">data["location"]["country_code"]</code></p>
+
+<p>python代码如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import json
+import sys
+import re
+def search(country):
+    file_object = open("shodan_data.json", 'r')
+    file_object2 = open(country+".txt", 'w')
+    for line in file_object:
+        data = json.loads(line)  
+        if re.search(data["location"]["country_code"], country, re.IGNORECASE):
+            str1 = "%s:%s" % (data["ip_str"],data["port"])
+            print str1
+            file_object2.writelines(str1+'\n')
+    file_object.close()
+    file_object2.close()
+if __name__ == "__main__":
+    if len(sys.argv)&lt;2:
+    	print ('[!]Wrong parameter')
+        sys.exit(0)
+    else:
+        print ('[*]Search country code: %s' % sys.argv[1])
+        search(sys.argv[1])
+        print ("[+]Done")
+</code></pre></div></div>
+
+<p>命令行参数:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>search.py US
+</code></pre></div></div>
+
+<p>生成文件US.txt，保存IP和对应的端口</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了Shodan API的用法，分享使用心得和python脚本开发技巧。选择付费购买时，记得区分好三种积分(credits)</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

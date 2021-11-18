@@ -1,0 +1,252 @@
+I"�-<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>我在最近的学习过程中，发现Powershell命令的历史记录有时会包含系统敏感信息，例如远程服务器的连接口令，于是我对Powershell的历史记录功能做了进一步研究，总结一些渗透测试中常用导出历史记录的方法，结合利用思路，给出防御建议。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>两种Powershell命令的历史记录</li>
+  <li>导出Powershell命令历史记录的方法</li>
+  <li>防御建议</li>
+</ul>
+
+<h2 id="0x02-两种powershell命令的历史记录">0x02 两种Powershell命令的历史记录</h2>
+<hr />
+
+<p>记录Powershell命令的历史记录有两种方式，可分别使用<code class="language-plaintext highlighter-rouge">Get-History</code>和<code class="language-plaintext highlighter-rouge">Get-PSReadlineOption</code>读取</p>
+
+<h3 id="1get-history">1、Get-History</h3>
+
+<p>参考文档：</p>
+
+<p>https://docs.microsoft.com/en-us/powershell/module/Microsoft.PowerShell.Core/Get-History?view=powershell-3.0</p>
+
+<p>默认Powershell v2及以上支持</p>
+
+<p>能够记录当前会话中输入的命令，多个Powershell进程之间不共享，Powershell进程退出后自动清除所有记录</p>
+
+<h4 id="1-常用命令">1. 常用命令</h4>
+
+<p>获得历史记录的完整信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-History | Format-List -Property *
+</code></pre></div></div>
+
+<p>包括：</p>
+
+<ul>
+  <li>Id</li>
+  <li>CommandLine</li>
+  <li>ExecutionStatus</li>
+  <li>StartExecutionTime</li>
+  <li>EndExecutionTime</li>
+</ul>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-5-16/2-1.png" alt="Alt text" /></p>
+
+<p>删除所有历史记录：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Clear-History
+</code></pre></div></div>
+
+<p>按ID号删除命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Clear-History -Id 3
+</code></pre></div></div>
+
+<h4 id="2-利用思路">2. 利用思路</h4>
+
+<p>获得了一台Windows系统的权限，发现后台有Powershell进程，想要读取Powershell进程中的历史记录</p>
+
+<p>(1)Powershell进程无法接收键盘输入命令</p>
+
+<p>例如Powershell加载了一个在后台运行的脚本:<code class="language-plaintext highlighter-rouge">Powershell -ep bypass -f 1.ps1</code></p>
+
+<p>此时无法向Powershell进程发送键盘消息，这时可以通过读取进程的命令行参数获得有用的信息，开源代码：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Language/blob/master/GetProcessCommandLine.cpp</p>
+
+<p>代码实现了读取指定进程的命令行参数，通常能够获得有用的信息</p>
+
+<p>(2)Powershell进程能够接收键盘输入命令</p>
+
+<p>这里可以模拟发送键盘消息，导出历史记录</p>
+
+<p>程序实现思路：</p>
+
+<ul>
+  <li>通过遍历枚举所有窗口</li>
+  <li>通过GetWindowThreadProcessId从窗口（HWND）获得PID</li>
+  <li>比较PID，找到符合条件的窗口</li>
+  <li>向符合条件的窗口发送键盘消息（PostMessage）</li>
+</ul>
+
+<p>程序细节：</p>
+
+<p>1.Virtual-Key Codes</p>
+
+<p>每一个键盘输入消息对应一个Virtual-Key Code</p>
+
+<p>参考资料：
+https://docs.microsoft.com/en-us/windows/desktop/inputdev/virtual-key-codes</p>
+
+<p>需要模拟键盘按下和键盘抬起两个操作，开源的测试代码：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Language/blob/master/SendKeyboardMessageToPowershell.cpp</p>
+
+<p>代码实现了搜索指定pid的进程，向进程发送键盘消息，内容为:<code class="language-plaintext highlighter-rouge">whoami</code></p>
+
+<p>2.导出历史记录</p>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-History|export-csv $env:temp"\history.csv"
+</code></pre></div></div>
+
+<p>其中需要考虑字符<code class="language-plaintext highlighter-rouge">"|"</code>、<code class="language-plaintext highlighter-rouge">"$"</code>和<code class="language-plaintext highlighter-rouge">"""</code>，模拟键盘输入时需要加<code class="language-plaintext highlighter-rouge">Shift键</code></p>
+
+<p>这里的实现方法是先使用<code class="language-plaintext highlighter-rouge">keybd_event</code>按下<code class="language-plaintext highlighter-rouge">Shift键</code>，再用<code class="language-plaintext highlighter-rouge">PostMessage</code>发送按键的字母，最后抬起两个按键</p>
+
+<p>开源的测试代码：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Language/blob/master/SendKeyboardMessageToPowershell(Get-History).cpp</p>
+
+<p>代码实现了搜索指定pid的进程，向进程发送键盘消息，内容为:<code class="language-plaintext highlighter-rouge">Get-History|export-csv $env:temp"\history.csv"</code></p>
+
+<h4 id="3-补充查看cmdexe的历史记录">3. 补充：查看cmd.exe的历史记录</h4>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>doskey /h
+</code></pre></div></div>
+
+<p>清空：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>doskey /reinstall
+</code></pre></div></div>
+
+<p>也可以通过发送键盘消息的方式导出cmd.exe的命令历史记录</p>
+
+<h3 id="2get-psreadlineoption">2、Get-PSReadlineOption</h3>
+
+<p>参考文档：</p>
+
+<p>https://docs.microsoft.com/en-us/powershell/module/psreadline/?view=powershell-5.1</p>
+
+<p>默认Powershell v5支持</p>
+
+<p>Powershell v3和Powershell v4需要安装Get-PSReadlineOption后才可以使用</p>
+
+<p>安装后，所有Powershell命令的历史记录会保存在同一位置，可随时查看</p>
+
+<h4 id="1-powershell-v3和powershell-v4的安装和使用">1. Powershell v3和Powershell v4的安装和使用</h4>
+
+<p>这里以64位系统为例，安装方法如下：</p>
+
+<p>(1)安装PowerShellGet</p>
+
+<p>下载：</p>
+
+<p>https://www.microsoft.com/en-us/download/details.aspx?id=51451</p>
+
+<p><strong>注：</strong></p>
+
+<p>安装前需要关闭powershell进程</p>
+
+<p>可以通过命令行实现隐蔽安装，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>msiexec /q /i PackageManagement_x64.msi
+</code></pre></div></div>
+
+<p>安装成功后，在控制面板的已安装程序列表(Control Panel\Programs\Programs and Features)有显示:<code class="language-plaintext highlighter-rouge">Package Management Preview - x64</code></p>
+
+<p>可以通过删除对应的注册表项进行隐藏，更多细节可参考<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E5%9F%BA%E7%A1%80-%E8%8E%B7%E5%BE%97%E5%BD%93%E5%89%8D%E7%B3%BB%E7%BB%9F%E5%B7%B2%E5%AE%89%E8%A3%85%E7%9A%84%E7%A8%8B%E5%BA%8F%E5%88%97%E8%A1%A8">《渗透基础——获得当前系统已安装的程序列表》</a></p>
+
+<p><code class="language-plaintext highlighter-rouge">Package Management Preview - x64</code>的注册表路径为<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{57E5A8BB-41EB-4F09-B332-B535C5954A28}</code></p>
+
+<p>只需要删除这个注册表项及子项即可实现在已安装程序列表中隐藏</p>
+
+<p>删除注册表项的cmd命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg delete HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{57E5A8BB-41EB-4F09-B332-B535C5954A28} /f
+</code></pre></div></div>
+
+<p>(2)安装PSReadLine</p>
+
+<p>通过Install-Module命令安装</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Install-Module -Name PSReadLine
+</code></pre></div></div>
+
+<p>弹出提示：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>NuGet provider is required to continue
+PowerShellGet requires NuGet provider version '2.8.5.201' or newer to interact
+with NuGet-based repositories. The NuGet provider must be available in
+'C:\Program Files\PackageManagement\ProviderAssemblies' or
+'C:\Users\Administrator\AppData\Local\PackageManagement\ProviderAssemblies'.
+You can also install the NuGet provider by running 'Install-PackageProvider
+-Name NuGet -MinimumVersion 2.8.5.201 -Force'. Do you want PowerShellGet to
+install and import the NuGet provider now?
+[Y] Yes  [N] No  [S] Suspend  [?] Help (default is "Y"):
+</code></pre></div></div>
+
+<p>需要再次输入<code class="language-plaintext highlighter-rouge">Y</code>进行安装</p>
+
+<p>如果需要实现一键安装，可以先安装NuGet，再安装PSReadLine，完整命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+Install-Module -Name PSReadLine
+</code></pre></div></div>
+
+<p>(3)使用</p>
+
+<p>所有powershell命令将会保存在固定位置:<code class="language-plaintext highlighter-rouge">%appdata%\Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt</code></p>
+
+<p>查看命令的历史记录：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-Content (Get-PSReadlineOption).HistorySavePath
+</code></pre></div></div>
+
+<p>清除命令的历史记录：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Remove-Item (Get-PSReadlineOption).HistorySavePath
+</code></pre></div></div>
+
+<h4 id="2-利用思路-1">2. 利用思路</h4>
+
+<p>获得了Windows系统的访问权限，首先查看Powershell版本，如果是v5，可通过读取文件<code class="language-plaintext highlighter-rouge">%appdata%\Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt</code>获得历史记录</p>
+
+<p>如果系统是Powershell v3或Powershell v4，可通过命令行安装PSReadLine，这样就能记录后续系统所有的Powershell命令</p>
+
+<h2 id="0x03-防御建议">0x03 防御建议</h2>
+<hr />
+
+<p>如果使用高版本的Windows系统，如Win10，默认Powershell版本为5.0，会记录Powershell的命令，建议定时进行清除，位置：<code class="language-plaintext highlighter-rouge">%appdata%\Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt</code></p>
+
+<p>清除命令的历史记录：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Remove-Item (Get-PSReadlineOption).HistorySavePath
+</code></pre></div></div>
+
+<p>对于低版本的Powershell，如果命令中包含敏感信息(如远程连接的口令)，需要及时清除，命令为：<code class="language-plaintext highlighter-rouge">Clear-History</code></p>
+
+<p>对于cmd.exe，如果命令中包含敏感信息(如远程连接的口令)，需要及时清除，命令为：<code class="language-plaintext highlighter-rouge">doskey /reinstall</code></p>
+
+<h2 id="0x04-小结">0x04 小结</h2>
+<hr />
+
+<p>本文介绍了两种Powershell命令的历史记录，总结常用导出历史记录的方法，结合利用思路，给出防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

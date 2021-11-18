@@ -1,0 +1,275 @@
+I"�2<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在域渗透中，我们在口令爆破前需要先获得域内用户的口令策略，以免在口令爆破时锁定用户</p>
+
+<p>站在防御的角度，需要识别出口令爆破的攻击行为并采取防御措施</p>
+
+<p>本文将要介绍获取域内用户口令策略的常用方法，结合利用思路分享检测域用户口令爆破的方法。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>修改域用户口令策略的方法</li>
+  <li>域外获取域用户口令策略的方法</li>
+  <li>域内获取域用户口令策略的方法</li>
+  <li>检测方法</li>
+</ul>
+
+<h2 id="0x02-基础知识">0x02 基础知识</h2>
+<hr />
+
+<p>我们需要关注以下口令策略：</p>
+
+<ul>
+  <li>Maximum password age，表示密码过期的时间，默认为42</li>
+  <li>Minimum password length，表示密码的最小长度，默认为7</li>
+  <li>Account lockout duration，表示被锁定的帐户在自动解锁前保持锁定的分钟数，默认为30</li>
+  <li>Account lockout threshold，表示导致用户帐户被锁定的失败登录尝试次数，默认为5</li>
+  <li>Reset account lockout counter after，表示失败登录尝试计数器重置为0次错误登录尝试之前，失败登录尝试后必须经过的分钟数，默认为30</li>
+</ul>
+
+<h2 id="0x03-修改域用户口令策略的方法">0x03 修改域用户口令策略的方法</h2>
+<hr />
+
+<p>域用户的口令策略默认保存在域内的默认组策略(Default Domain Policy)中，guid为<code class="language-plaintext highlighter-rouge">{31B2F340-016D-11D2-945F-00C04FB984F9}</code></p>
+
+<p>在域控制器上打开<code class="language-plaintext highlighter-rouge">Group Policy Management</code>，找到当前域，选择<code class="language-plaintext highlighter-rouge">Default Domain Policy</code>，右键选择编辑，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/2-1.png" alt="Alt text" /></p>
+
+<p>依次打开<code class="language-plaintext highlighter-rouge">Computer Configuration</code>-&gt;<code class="language-plaintext highlighter-rouge">Policies</code>-&gt;<code class="language-plaintext highlighter-rouge">Windows Settings</code>-&gt;<code class="language-plaintext highlighter-rouge">Security Settings</code>-&gt;<code class="language-plaintext highlighter-rouge">Account Policies</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/2-2.png" alt="Alt text" /></p>
+
+<p>根据提示修改对应的选项</p>
+
+<p>修改以后可以选择立即更新组策略使其立即生效，命令行输入：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gpupdate
+</code></pre></div></div>
+
+<h2 id="0x04-域外获取域用户口令策略的方法">0x04 域外获取域用户口令策略的方法</h2>
+<hr />
+
+<h3 id="1kali系统通过ldapsearch获取域用户口令策略">1.Kali系统通过ldapsearch获取域用户口令策略</h3>
+
+<p>测试环境如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-12/2-1.png" alt="Alt text" /></p>
+
+<p>前提：我们能够访问到域控制器(DC)的389端口，并且我们至少已经获得了域内一个普通用户的口令</p>
+
+<p>这个测试环境中，我们获得了域内普通用户<code class="language-plaintext highlighter-rouge">testa</code>的口令为<code class="language-plaintext highlighter-rouge">DomainUser123!</code></p>
+
+<p>连接命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldapsearch -x -H ldap://192.168.1.1:389 -D "CN=testa,CN=Users,DC=test,DC=com" -w DomainUser123! -b "DC=test,DC=com" | grep replUpToDateVector -A 13
+</code></pre></div></div>
+
+<p>参数说明：
+-x 进行简单认证
+-H 服务器地址
+-D 用来绑定服务器的DN
+-w 绑定DN的密码
+-b 指定要查询的根节点</p>
+
+<p>使用grep命令对输出结果进行筛选，<code class="language-plaintext highlighter-rouge">grep replUpToDateVector -A 13</code>是为了只显示出同密码策略相关的项</p>
+
+<p>输出结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/3-1.png" alt="Alt text" /></p>
+
+<p>包括以下需要的信息：</p>
+
+<ul>
+  <li>maxPwdAge: -36288000000000</li>
+  <li>minPwdLength: 10</li>
+  <li>lockoutDuration: -18600000000</li>
+  <li>lockoutThreshold: 15</li>
+  <li>lockOutObservationWindow: -18600000000</li>
+</ul>
+
+<p>换算成以秒为单位要除以<code class="language-plaintext highlighter-rouge">10000000</code></p>
+
+<p>例如：</p>
+
+<p>(1)maxPwdAge: -36288000000000</p>
+
+<p>36288000000000/10000000=3628800s</p>
+
+<p>3628800/86400=42d</p>
+
+<p>maxPwdAge=42d</p>
+
+<p>(2)lockoutDuration: -18600000000</p>
+
+<p>-18600000000/10000000=1860s</p>
+
+<p>1860/60=31m</p>
+
+<p>lockoutDuration=31m</p>
+
+<h3 id="2windows系统通过powershell获取域用户口令策略">2.Windows系统通过PowerShell获取域用户口令策略</h3>
+
+<p>测试环境如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-12/3-1.png" alt="Alt text" /></p>
+
+<p>前提：我们能够访问到域控制器(DC)的389端口，并且我们至少已经获得了域内一个普通用户的口令</p>
+
+<p>这个测试环境中，我们获得了域内普通用户<code class="language-plaintext highlighter-rouge">testa</code>的口令为<code class="language-plaintext highlighter-rouge">DomainUser123!</code></p>
+
+<p>这里需要使用powershell模块Active Directory</p>
+
+<p>这里不必专门安装powershell模块Active Directory，可以通过调用Microsoft.ActiveDirectory.Management.dll的方式解决</p>
+
+<p>Microsoft.ActiveDirectory.Management.dll在安装powershell模块Active Directory后生成，我已经提取出来并上传至github：
+https://github.com/3gstudent/test/blob/master/Microsoft.ActiveDirectory.Management.dll</p>
+
+<p>此外，还需要使用凭据信息，所以完整的Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$uname="testa"
+$pwd=ConvertTo-SecureString "DomainUser123!" -AsPlainText –Force
+$cred=New-Object System.Management.Automation.PSCredential($uname,$pwd)
+import-module .\Microsoft.ActiveDirectory.Management.dll
+Get-ADDefaultDomainPasswordPolicy -Server 192.168.1.1 -Credential $cred -Verbose
+</code></pre></div></div>
+
+<p>输出结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/3-2.png" alt="Alt text" /></p>
+
+<h3 id="3windows系统通过域共享文件获取域用户口令策略">3.Windows系统通过域共享文件获取域用户口令策略</h3>
+
+<p>测试环境同上</p>
+
+<p>域用户的口令策略保存在域内的默认组策略(Default Domain Policy)中，guid为<code class="language-plaintext highlighter-rouge">{31B2F340-016D-11D2-945F-00C04FB984F9}</code></p>
+
+<p>这里可以通过通过访问域内共享文件夹\SYSVOL进行查看</p>
+
+<p>前提：需要提供域用户的凭据</p>
+
+<p>这个测试环境中，我们获得了域内普通用户<code class="language-plaintext highlighter-rouge">testa</code>的口令为<code class="language-plaintext highlighter-rouge">DomainUser123!</code></p>
+
+<p>通用位置为：<code class="language-plaintext highlighter-rouge">\\&lt;DOMAIN Controller IP&gt;\SYSVOL\&lt;DOMAIN&gt;\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf</code></p>
+
+<p>测试环境的位置为：<code class="language-plaintext highlighter-rouge">\\192.168.1.1\SYSVOL\test.com\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf</code></p>
+
+<p>输出结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/3-3.png" alt="Alt text" /></p>
+
+<h2 id="0x05-域内获取域用户口令策略的方法">0x05 域内获取域用户口令策略的方法</h2>
+<hr />
+
+<p>前提是已经获得了域内一台主机的权限</p>
+
+<p>测试环境如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-12/4-1.png" alt="Alt text" /></p>
+
+<h3 id="1通过powershell获取域用户口令策略">1.通过PowerShell获取域用户口令策略</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import-module .\Microsoft.ActiveDirectory.Management.dll
+Get-ADDefaultDomainPasswordPolicy
+</code></pre></div></div>
+
+<h3 id="2通过c获取域用户口令策略">2.通过c++获取域用户口令策略</h3>
+
+<p>使用API <code class="language-plaintext highlighter-rouge">NetUserModalsGet</code>来获取域用户的口令策略</p>
+
+<p>结构体<code class="language-plaintext highlighter-rouge">USER_MODALS_INFO_0</code>保存全局密码信息</p>
+
+<p>结构体<code class="language-plaintext highlighter-rouge">USER_MODALS_INFO_3</code>保存锁定信息</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/windows/win32/api/lmaccess/nf-lmaccess-netusermodalsget?redirectedfrom=MSDN</p>
+
+<p>根据参考资料中的代码，添加查询用户锁定信息的功能，代码已上传至github，地址如下:</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Language/blob/master/GetDomainPasswordPolicy.cpp</p>
+
+<p>代码分别使用结构体<code class="language-plaintext highlighter-rouge">USER_MODALS_INFO_0</code>和<code class="language-plaintext highlighter-rouge">USER_MODALS_INFO_3</code>对用户的口令策略进行查询</p>
+
+<p>输出结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/4-1.png" alt="Alt text" /></p>
+
+<p>###3.通过域共享文件获取域用户口令策略</p>
+
+<p>通用位置为：<code class="language-plaintext highlighter-rouge">\\&lt;DOMAIN&gt;\SYSVOL\&lt;DOMAIN&gt;\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf</code></p>
+
+<p>测试环境的位置为：<code class="language-plaintext highlighter-rouge">\\test.com\SYSVOL\test.com\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit\GptTmpl.inf</code></p>
+
+<h2 id="0x06-检测方法">0x06 检测方法</h2>
+<hr />
+
+<p>域用户的属性中包括两个有用的信息：</p>
+
+<ul>
+  <li>badPwdCount，记录用户口令错误的次数</li>
+  <li>lastbadpasswordattempt，记录上次口令输入错误的登陆时间</li>
+</ul>
+
+<p>我们在检测时可以通过查询这两个属性来识别是否遭受口令爆破的攻击，具体方法如下：</p>
+
+<h3 id="1直接在域控制器上查询">1.直接在域控制器上查询</h3>
+
+<p>Powershell代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-ADUser -Filter * -Properties *| select name,lastbadpasswordattempt,badpwdcount|fl
+</code></pre></div></div>
+
+<p>输出结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/5-1.png" alt="Alt text" /></p>
+
+<h3 id="2在域内普通用户登录的主机上">2.在域内普通用户登录的主机上</h3>
+
+<h4 id="1使用powerview">(1)使用powerview</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-NetUser | select name,badpasswordtime,badpwdcount
+</code></pre></div></div>
+
+<p>输出结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/5-2.png" alt="Alt text" /></p>
+
+<h4 id="2使用c">(2)使用c++</h4>
+
+<p>https://github.com/3gstudent/Homework-of-C-Language/blob/master/CheckUserBadPwdPolicy.cpp</p>
+
+<p>输出结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/5-3.png" alt="Alt text" /></p>
+
+<h3 id="3在域外的kali系统上">3.在域外的kali系统上</h3>
+
+<h4 id="1使用ldapsearch">(1)使用ldapsearch</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldapsearch -x -H ldap://192.168.1.1:389 -D "CN=testa,CN=Users,DC=test,DC=com" -w DomainUser123! -b "DC=test,DC=com" -b "DC=test,DC=com" "(&amp;(objectClass=user)(objectCategory=person))"|grep -E "cn:|badPwdCount|badPasswordTime"
+</code></pre></div></div>
+
+<p>输出结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-12-20/5-4.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>如果口令输入正确，那么badPwdCount会被清零</p>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文列举了获取域内用户口令策略的常用方法，介绍了如何在多种环境下识别出口令爆破的行为。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

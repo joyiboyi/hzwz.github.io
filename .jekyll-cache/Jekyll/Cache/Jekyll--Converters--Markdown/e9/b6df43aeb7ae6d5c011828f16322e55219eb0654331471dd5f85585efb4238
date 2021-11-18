@@ -1,0 +1,253 @@
+I"�)<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章《vSphere开发指南1——vSphere Automation API》和《vSphere开发指南2——vSphere Web Services API》分别介绍了通过vSphere Automation API和vSphere Web Services API实现vCenter Server同虚拟机交互的方法，本文将要介绍通过PowerCLI实现vCenter Server同虚拟机交互的方法</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>PowerCLI的安装配置</li>
+  <li>PowerCLI命令</li>
+  <li>C Sharp调用PowerCLI的方法</li>
+</ul>
+
+<h2 id="0x02-powercli的安装配置">0x02 PowerCLI的安装配置</h2>
+<hr />
+
+<p>PowerCLI是用于管理VMware基础架构的PowerShell模块的集合，之前被称作VI Toolkit (for Windows)</p>
+
+<p>官方文档：</p>
+
+<p>https://developer.vmware.com/powercli</p>
+
+<h3 id="1powercli的安装">1.PowerCLI的安装</h3>
+
+<h4 id="1在线安装">(1)在线安装</h4>
+
+<p>PowerShell版本最低需要满足PowerShell 5.0</p>
+
+<p>安装命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Install-Module -Name VMware.PowerCLI
+</code></pre></div></div>
+
+<h4 id="2离线安装">(2)离线安装</h4>
+
+<p>下载PowerCLI的Zip文件，地址如下：</p>
+
+<p>https://code.vmware.com/doc/preview?id=13693</p>
+
+<p>获得PowerShell Modules的路径，Powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$env:PSModulePath
+</code></pre></div></div>
+
+<p>默认可用的一个位置：<code class="language-plaintext highlighter-rouge">C:\Program Files\WindowsPowerShell\Modules</code></p>
+
+<p>将PowerCLI的Zip文件解压至该目录</p>
+
+<p>解锁文件:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd C:\Program Files\WindowsPowerShell\Modules
+Get-ChildItem * -Recurse | Unblock-File
+</code></pre></div></div>
+
+<p>确认是否安装成功:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-Module -Name VMware.PowerCLI -ListAvailable
+</code></pre></div></div>
+
+<h3 id="2powercli的使用">2.PowerCLI的使用</h3>
+
+<p>支持命令的说明文档：</p>
+
+<p>https://developer.vmware.com/docs/powercli/latest/products/vmwarevsphereandvsan/</p>
+
+<p>首先调用<code class="language-plaintext highlighter-rouge">Connect-VIServer</code>连接至vCenter，接下来对虚拟机进行管理，最后需要调用<code class="language-plaintext highlighter-rouge">Disconnect-VIServer</code>断开连接</p>
+
+<p>参照说明文档，同样实现以下功能：</p>
+
+<ul>
+  <li>读取虚拟机的配置</li>
+  <li>查看虚拟机文件</li>
+  <li>删除虚拟机文件</li>
+  <li>向虚拟机上传文件</li>
+  <li>从虚拟机下载文件</li>
+  <li>在虚拟机中执行命令</li>
+</ul>
+
+<p>具体对应的命令示例如下：</p>
+
+<h4 id="1读取虚拟机的配置">(1)读取虚拟机的配置</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Connect-VIServer -Server 192.168.1.1 -Protocol https -User admin -Password pass1 -Force
+Get-VM
+Disconnect-VIServer -Server 192.168.1.1 -Force -Confirm:$false
+</code></pre></div></div>
+
+<h4 id="2查看虚拟机文件">(2)查看虚拟机文件</h4>
+
+<p>可通过在虚拟机中执行命令实现</p>
+
+<h4 id="3删除虚拟机文件">(3)删除虚拟机文件</h4>
+
+<p>可通过在虚拟机中执行命令实现</p>
+
+<h4 id="4向虚拟机的上传文件">(4)向虚拟机的上传文件</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Connect-VIServer -Server 192.168.1.1 -Protocol https -User admin -Password pass1 -Force
+Copy-VMGuestFile -Source c:\text.txt -Destination c:\temp\ -VM VM -LocalToGuest  -GuestUser user -GuestPassword pass2
+Disconnect-VIServer -Server 192.168.1.1 -Force -Confirm:$false
+</code></pre></div></div>
+
+<h4 id="5从虚拟机下载文件">(5)从虚拟机下载文件</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Connect-VIServer -Server 192.168.1.1 -Protocol https -User admin -Password pass1 -Force
+Copy-VMGuestFile -Source c:\text.txt -Destination c:\temp\ -VM VM -GuestToLocal -GuestUser user -GuestPassword pass2
+Disconnect-VIServer -Server 192.168.1.1 -Force -Confirm:$false
+</code></pre></div></div>
+
+<h4 id="6在虚拟机中执行命令">(6)在虚拟机中执行命令</h4>
+
+<p>虚拟机系统为Windows：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Connect-VIServer -Server 192.168.1.1 -Protocol https -User admin -Password pass1 -Force
+Invoke-VMScript -VM VM -ScriptText "dir" -GuestUser administrator -GuestPassword pass2
+Disconnect-VIServer -Server 192.168.1.1 -Force -Confirm:$false
+</code></pre></div></div>
+
+<p>虚拟机系统为Linux：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Connect-VIServer -Server 192.168.1.1 -Protocol https -User admin -Password pass1 -Force
+Invoke-VMScript -VM VM2 -ScriptText "pwd" -GuestUser root -GuestPassword pass2
+Disconnect-VIServer -Server 192.168.1.1 -Force -Confirm:$false
+</code></pre></div></div>
+
+<p><strong>注:</strong></p>
+
+<p>实现以上功能不需要完整的PowerCLI，我们可以仅在<code class="language-plaintext highlighter-rouge">C:\Program Files\WindowsPowerShell\Modules</code>中保留以下文件夹：</p>
+
+<ul>
+  <li>VMware.PowerCLI</li>
+  <li>VMware.Vim</li>
+  <li>VMware.VimAutomation.Cis.Core</li>
+  <li>VMware.VimAutomation.Common</li>
+  <li>VMware.VimAutomation.Core</li>
+  <li>VMware.VimAutomation.Sdk</li>
+</ul>
+
+<h2 id="0x03-c-sharp调用powercli的方法">0x03 C Sharp调用PowerCLI的方法</h2>
+<hr />
+
+<p>可供参考的示例代码：</p>
+
+<p>https://github.com/vmspot/vcenter-inventory</p>
+
+<p>代码引用了PowerCLI中的dll，实现了通过vCenter Server对虚拟机资源的访问，是一个界面程序</p>
+
+<p>在实际使用过程中，代码需要做以下修改：</p>
+
+<h4 id="1禁用证书认证">(1)禁用证书认证</h4>
+
+<p>添加代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System.net;
+System.Net.ServicePointManager.ServerCertificateValidationCallback = ((sender, certificate, chain, sslPolicyErrors) =&gt; true);
+</code></pre></div></div>
+
+<h4 id="2避免错误">(2)避免错误</h4>
+
+<p>错误内容：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Error: An error occurred while making the HTTP request to https://&lt;ip&gt;/. This could be due to the fact that the server certificate is not configuredproperly with HTTP.SYS in the HTTPS case. This could also be caused by a mismatch of the security binding between the client and the server.
+</code></pre></div></div>
+
+<p>解决方法：</p>
+
+<p>添加代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
+</code></pre></div></div>
+
+<p>最终的命令行实现代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+using VMware.Vim;
+using System.Collections.Specialized;
+
+namespace ConsoleApplication28
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            System.Net.ServicePointManager.ServerCertificateValidationCallback = ((sender, certificate, chain, sslPolicyErrors) =&gt; true);
+            System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
+
+            string host = "192.168.1.1";
+            string username = "administrator@vsphere.local";
+            string password = "Password123";
+
+            //Create a new VIM client object that will be used to connect to vCenter's SDK service
+            VimClient Client = new VimClientImpl();
+            Client.Connect("https://" + host + "/sdk");
+            Client.Login(username, password);
+
+            // Get a list of Windows VM's
+            NameValueCollection filter = new NameValueCollection();
+            filter.Add("Config.GuestFullName", "Windows");
+
+            List&lt;EntityViewBase&gt; vmlist = new List&lt;EntityViewBase&gt;();
+            vmlist = Client.FindEntityViews(typeof(VirtualMachine), null, filter, null);
+
+            //Populate the VM names into the VM ListBox
+            foreach (VirtualMachine vm in vmlist)
+            {
+                Console.WriteLine(" -  vm:" + vm.Name);
+                Console.WriteLine("    HostName:" + vm.Guest.HostName);
+                Console.WriteLine("    IpAddress:" + vm.Guest.IpAddress);
+                Console.WriteLine("    GuestState:" + vm.Guest.GuestState);              
+            }
+
+            //Get a list of ESXi hosts
+            List&lt;EntityViewBase&gt; hostlist = new List&lt;EntityViewBase&gt;();
+            hostlist = Client.FindEntityViews(typeof(HostSystem), null, null, null);
+
+            //Populate the Host names into the Host ListBox
+            foreach (HostSystem vmhost in hostlist)
+            {                
+                Console.WriteLine(vmhost.Name);
+            }
+
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>在编译程序前，需要引用以下4个dll：</p>
+
+<ul>
+  <li>VimService.dll，位于<code class="language-plaintext highlighter-rouge">C:\Program Files\WindowsPowerShell\Modules\VMware.Vim\net45</code></li>
+  <li>VMware.Binding.Wcf.dll，位于<code class="language-plaintext highlighter-rouge">C:\Program Files\WindowsPowerShell\Modules\VMware.Vim\net45</code></li>
+  <li>VMware.Binding.WsTrust.dll，位于<code class="language-plaintext highlighter-rouge">C:\Program Files\WindowsPowerShell\Modules\VMware.VimAutomation.Common\net45</code></li>
+  <li>VMware.Vim.dll，位于<code class="language-plaintext highlighter-rouge">C:\Program Files\WindowsPowerShell\Modules\VMware.Vim\net45</code></li>
+</ul>
+
+<h2 id="0x04-小结">0x04 小结</h2>
+<hr />
+
+<p>本文介绍了通过PowerCLI实现vCenter Server同虚拟机交互的方法，相比于vSphere Automation API和vSphere Web Services API，使用PowerCLI更加方便，仅需要引入PowerCLI后，通过简单的命令就能够实现同虚拟机的交互</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

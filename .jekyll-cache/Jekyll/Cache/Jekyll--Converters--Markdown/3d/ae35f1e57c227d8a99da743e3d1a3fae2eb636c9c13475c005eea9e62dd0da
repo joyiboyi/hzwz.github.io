@@ -1,0 +1,278 @@
+I"�/<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/Exchange-Web-Service(EWS)%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%972-SOAP-XML-message">《Exchange Web Service(EWS)开发指南2——SOAP XML message》</a>介绍了SOAP XML message的使用，通过Python实现了利用hash对Exchange资源的访问。</p>
+
+<p>当我们通过SOAP XML message读取邮件时，尝尝会遇到以下麻烦：由于每一封邮件对应一份原始的XML文件，原始的XML文件包含完整的邮件信息，人工分析邮件将耗费大量精力。</p>
+
+<p>于是，本文将要介绍一种SOAP XML解析器的实现方法，编写工具实现自动提取有价值的邮件信息，提高阅读效率。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>适用环境</li>
+  <li>设计思路</li>
+  <li>开源Python实现代码</li>
+  <li>代码开发细节</li>
+</ul>
+
+<h2 id="0x02-设计思路">0x02 设计思路</h2>
+<hr />
+
+<p>通过SOAP XML message读取收件箱中的所有邮件，需要以下步骤：</p>
+
+<ol>
+  <li>使用<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/ewsManage.py">ewsManage.py</a>的listmailofinbox命令获得每一封邮件的ItemId和ChangeKey</li>
+  <li>循环使用<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/ewsManage.py">ewsManage.py</a>的getmail命令，传入每封邮件对应的ItemId和ChangeKey</li>
+  <li>分别将返回结果保存为XML格式的文件，每一个XML文件对应一封邮件</li>
+</ol>
+
+<p>为了保证SOAP XML解析器的通用性，能够配合不同的工具，所以将SOAP XML解析器设计成了文件管理器的结构，选中XML文件将会自动解析，提取有价值的信息并显示，在设计上遵循以下原则：</p>
+
+<ul>
+  <li>开发语言选用Python，为了提高便捷性，全部使用Python的标准库</li>
+  <li>文件管理器涉及到Python的界面开发，使用标准GUI库<code class="language-plaintext highlighter-rouge">Tkinter</code></li>
+  <li>SOAP(Simple Object Access Protocol)协议在本质上仍为XML协议，在解析上使用标准库<code class="language-plaintext highlighter-rouge">xml.dom.minidom</code></li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>如果使用字符串匹配的方式对XML文件解析，还需要考虑转义字符</p>
+
+<h2 id="0x03-程序实现">0x03 程序实现</h2>
+<hr />
+
+<h3 id="1文件管理器的实现">1.文件管理器的实现</h3>
+
+<p>Tkinter的使用：</p>
+
+<p>https://docs.python.org/3/library/tk.html</p>
+
+<p>这里可以基于开源的<a href="https://github.com/yangsphp/file-manager-mask">file-manager-mask</a>进行二次开发，修改如下部分：</p>
+
+<ul>
+  <li>去掉图片显示功能</li>
+  <li>去掉编辑文本的功能</li>
+  <li>添加XML文件解析的功能</li>
+</ul>
+
+<h3 id="2xml文件解析">2.XML文件解析</h3>
+
+<p>xml.dom.minidom的使用：</p>
+
+<p>https://docs.python.org/3/library/xml.dom.minidom.html</p>
+
+<p>这里需要提取以下内容：</p>
+
+<ul>
+  <li>邮件标题</li>
+  <li>发件人</li>
+  <li>收件人</li>
+  <li>抄送</li>
+  <li>接收时间</li>
+  <li>附件名称</li>
+  <li>正文内容</li>
+</ul>
+
+<p>在数据提取上有以下不同的情况：</p>
+
+<p><strong>注：</strong></p>
+
+<p>XML标签对大小写敏感</p>
+
+<h4 id="1提取节点属性">(1)提取节点属性</h4>
+
+<p>响应消息的格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;m:GetItemResponseMessage ResponseClass="Success"&gt;
+</code></pre></div></div>
+
+<p>提取节点<code class="language-plaintext highlighter-rouge">"m:GetItemResponseMessage"</code>的属性<code class="language-plaintext highlighter-rouge">"ResponseClass"</code>，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from xml.dom import minidom
+dom = minidom.parse("TestMail.xml")
+data_response = dom.getElementsByTagName("m:GetItemResponseMessage")
+print(data_response[0].getAttribute("ResponseClass"))
+</code></pre></div></div>
+
+<h4 id="2直接提取标签对之间的数据">(2)直接提取标签对之间的数据</h4>
+
+<p>邮件标题的格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;t:Subject&gt;123&lt;/t:Subject&gt;
+</code></pre></div></div>
+
+<p>正文内容的格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;t:Body BodyType="Text" IsTruncated="false"&gt;123&lt;/t:Body&gt;
+</code></pre></div></div>
+
+<p>接收时间的格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;t:DateTimeReceived&gt;2021-01-11T11:08:50Z&lt;/t:DateTimeReceived&gt;
+</code></pre></div></div>
+
+<p>提取节点<code class="language-plaintext highlighter-rouge">"t:Subject"</code>的内容，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from xml.dom import minidom
+dom = minidom.parse("TestMail.xml")
+data_subject = dom.getElementsByTagName("t:Subject")
+print(data_subject[0].firstChild.data)
+</code></pre></div></div>
+
+<p>发件人的格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;t:Sender&gt;
+	&lt;t:Mailbox&gt;
+		&lt;t:Name&gt;test1&lt;/t:Name&gt;
+		&lt;t:EmailAddress&gt;test1@test.com&lt;/t:EmailAddress&gt;
+		&lt;t:RoutingType&gt;SMTP&lt;/t:RoutingType&gt;
+		&lt;t:MailboxType&gt;Mailbox&lt;/t:MailboxType&gt;
+	&lt;/t:Mailbox&gt;
+&lt;/t:Sender&gt;
+</code></pre></div></div>
+
+<p>这里需要考虑父节点和子节点</p>
+
+<p><strong>注：</strong></p>
+
+<p>发件人通常只有一个，所以不需要考虑循环提取</p>
+
+<p>提取父节点<code class="language-plaintext highlighter-rouge">"t:Sender"</code>的子节点<code class="language-plaintext highlighter-rouge">"t:Name"</code>内容，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from xml.dom import minidom
+dom = minidom.parse("TestMail.xml")
+data_from = dom.getElementsByTagName("t:Sender")
+print(data_from[0].getElementsByTagName("t:Name")[0].firstChild.data)
+</code></pre></div></div>
+
+<h4 id="3循环提取标签对之间的数据">(3)循环提取标签对之间的数据</h4>
+
+<p>收件人的格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;t:ToRecipients&gt;
+	&lt;t:Mailbox&gt;
+		&lt;t:Name&gt;test2&lt;/t:Name&gt;
+		&lt;t:EmailAddress&gt;test2@test.com&lt;/t:EmailAddress&gt;
+		&lt;t:RoutingType&gt;SMTP&lt;/t:RoutingType&gt;
+		&lt;t:MailboxType&gt;Mailbox&lt;/t:MailboxType&gt;
+	&lt;/t:Mailbox&gt;
+	&lt;t:Mailbox&gt;
+		&lt;t:Name&gt;test3&lt;/t:Name&gt;
+		&lt;t:EmailAddress&gt;test3@test.com&lt;/t:EmailAddress&gt;
+		&lt;t:RoutingType&gt;SMTP&lt;/t:RoutingType&gt;
+		&lt;t:MailboxType&gt;Mailbox&lt;/t:MailboxType&gt;
+	&lt;/t:Mailbox&gt;
+&lt;/t:ToRecipients&gt;
+</code></pre></div></div>
+
+<p>抄送人的格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;t:CcRecipients&gt;
+	&lt;t:Mailbox&gt;
+		&lt;t:Name&gt;test2&lt;/t:Name&gt;
+		&lt;t:EmailAddress&gt;test2@test.com&lt;/t:EmailAddress&gt;
+		&lt;t:RoutingType&gt;SMTP&lt;/t:RoutingType&gt;
+		&lt;t:MailboxType&gt;Mailbox&lt;/t:MailboxType&gt;
+	&lt;/t:Mailbox&gt;
+	&lt;t:Mailbox&gt;
+		&lt;t:Name&gt;test3&lt;/t:Name&gt;
+		&lt;t:EmailAddress&gt;test3@test.com&lt;/t:EmailAddress&gt;
+		&lt;t:RoutingType&gt;SMTP&lt;/t:RoutingType&gt;
+		&lt;t:MailboxType&gt;Mailbox&lt;/t:MailboxType&gt;
+	&lt;/t:Mailbox&gt;
+&lt;/t:CcRecipients&gt;
+</code></pre></div></div>
+
+<p>附件的格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;t:Attachments&gt;
+	&lt;t:FileAttachment&gt;
+		&lt;t:AttachmentId Id="AAMk**1"/&gt;
+		&lt;t:Name&gt;image1.jpg&lt;/t:Name&gt;
+		&lt;t:ContentType&gt;image/jpeg&lt;/t:ContentType&gt;
+		&lt;t:ContentId&gt;image1.jpg@11111111.11111111&lt;/t:ContentId&gt;
+		&lt;t:Size&gt;1024&lt;/t:Size&gt;
+		&lt;t:LastModifiedTime&gt;2021-01-01T01:01:01&lt;/t:LastModifiedTime&gt;
+		&lt;t:IsInline&gt;true&lt;/t:IsInline&gt;
+		&lt;t:IsContactPhoto&gt;false&lt;/t:IsContactPhoto&gt;
+	&lt;/t:FileAttachment&gt;
+	&lt;t:FileAttachment&gt;
+		&lt;t:AttachmentId Id="AAMk**2"/&gt;
+		&lt;t:Name&gt;image2.jpg&lt;/t:Name&gt;
+		&lt;t:ContentType&gt;image/jpeg&lt;/t:ContentType&gt;
+		&lt;t:ContentId&gt;image2.jpg@11111111.11111112&lt;/t:ContentId&gt;
+		&lt;t:Size&gt;1024&lt;/t:Size&gt;
+		&lt;t:LastModifiedTime&gt;2021-01-01T01:01:01&lt;/t:LastModifiedTime&gt;
+		&lt;t:IsInline&gt;true&lt;/t:IsInline&gt;
+		&lt;t:IsContactPhoto&gt;false&lt;/t:IsContactPhoto&gt;
+		&lt;/t:FileAttachment&gt;
+	&lt;/t:Attachments&gt;
+</code></pre></div></div>
+
+<p>这里需要考虑父节点和兄弟节点</p>
+
+<p>提取父节点<code class="language-plaintext highlighter-rouge">"t:ToRecipients"</code>的所有子节点<code class="language-plaintext highlighter-rouge">"t:Name"</code>的内容，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from xml.dom import minidom
+dom = minidom.parse("TestMail.xml")
+data_to = dom.getElementsByTagName("t:ToRecipients")
+data_to_name = data_to[0].getElementsByTagName("t:Name")
+for i in range(len(data_to_name)):
+	print(data_to_name[i].firstChild.data)
+</code></pre></div></div>
+
+<p>以上代码跳过了对节点<code class="language-plaintext highlighter-rouge">"t:Mailbox"</code>的判断，如果加上判断，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from xml.dom import minidom
+dom = minidom.parse("TestMail.xml")
+data_to = dom.getElementsByTagName("t:ToRecipients")
+data_to_mailbox = data_to[0].getElementsByTagName("t:Mailbox")
+for i in range(len(data_to_mailbox)):
+	print(data_to_mailbox[i].getElementsByTagName("t:Name")[0].firstChild.data)
+</code></pre></div></div>
+
+<p>当完成了对XML文件的数据提取后，需要考虑如何将数据显示到文件管理器的窗口上</p>
+
+<p>这里要用到insert函数</p>
+
+<p>参数说明：</p>
+
+<p>https://docs.python.org/3.8/library/tkinter.ttk.html?highlight=insert#tkinter.ttk.Notebook.insert</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>insert(pos, child, **kw)
+Inserts a pane at the specified position.
+</code></pre></div></div>
+
+<p>对于参数<code class="language-plaintext highlighter-rouge">pos</code>,<code class="language-plaintext highlighter-rouge">END</code>代表从最后一行插入，数字代表从指定行插入(例如第一行为<code class="language-plaintext highlighter-rouge">1.0</code>)</p>
+
+<p>完整的代码已上传至Github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/Exchange_EWS_XML_Parser.py</p>
+
+<p>代码支持以下功能：</p>
+
+<ul>
+  <li>文件管理器，便于查看多个文件，可以通过键盘方向键实现文件切换</li>
+  <li>XML文件解析，能够从Exchange SOAP XML message中自动提取出有价值的信息，标记不符合格式的XML文件</li>
+</ul>
+
+<p>运行界面如下图：</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-3-22/2-1.png" alt="Alt text" /></p>
+
+<p>后续可以结合<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/ewsManage.py">ewsManage.py</a>开发完整的Exchange界面化客户端程序，实现利用hash读取Exchange邮件</p>
+
+<h2 id="0x04-小结">0x04 小结</h2>
+<hr />
+
+<p>本文介绍了一种SOAP XML解析器的实现方法，编写工具实现自动从Exchange SOAP XML message中提取邮件信息，开源Python实现代码，分析代码开发细节</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

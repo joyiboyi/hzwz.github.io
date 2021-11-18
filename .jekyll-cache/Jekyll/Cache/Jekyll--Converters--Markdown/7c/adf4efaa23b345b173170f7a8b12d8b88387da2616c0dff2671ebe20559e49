@@ -1,0 +1,277 @@
+I"�+<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在后渗透阶段，获得权限后需要搜集目标系统的信息。信息越全面，越有助于进一步的渗透。对于Windows系统，用户浏览器往往包含有价值的信息。</p>
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E6%9C%AC%E5%9C%B0%E5%AF%86%E7%A0%81%E6%9F%A5%E7%9C%8B%E5%B7%A5%E5%85%B7LaZagne%E4%B8%AD%E7%9A%84%E8%87%AA%E5%AE%9A%E4%B9%89%E8%84%9A%E6%9C%AC%E5%BC%80%E5%8F%91">《本地密码查看工具LaZagne中的自定义脚本开发》</a>曾介绍过利用LaZagne导出多个浏览器密码的方法。</p>
+
+<p>本文将要针对Chrome浏览器，介绍具体的导出原理和利用方法，解决一个实际问题： <code class="language-plaintext highlighter-rouge">如何导出另一系统下Chrome浏览器中保存的密码？</code></p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>Chrome浏览器保存密码的方式</li>
+  <li>如何导出Chrome浏览器中保存的密码</li>
+  <li>常用方法的限制</li>
+  <li>如何导出另一系统下Chrome浏览器中保存的密码</li>
+</ul>
+
+<h2 id="0x02-chrome浏览器保存密码的方式">0x02 Chrome浏览器保存密码的方式</h2>
+<hr />
+
+<p>正常用户在访问网站时，可选择使用Chrome浏览器保存登录的用户密码，用于下次登录的时候Chrome自动填写登录密码，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/2-0.png" alt="Alt text" /></p>
+
+<p>在Chrome中可以查看保存的登录密码(需要提供用户口令)，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/2-1.png" alt="Alt text" /></p>
+
+<p>Chrome中保存的密码先被二次加密，然后被保存在SQLite数据库文件中，位置如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">%LocalAppData%\Google\Chrome\User Data\Default\Login Data</code></p>
+
+<h3 id="实际测试">实际测试：</h3>
+
+<p>测试系统： Win7x86</p>
+
+<p>Chrome版本： 63.0.3239.132</p>
+
+<p>定位SQLite数据库文件，位于<code class="language-plaintext highlighter-rouge">C:\Users\a\AppData\Local\Google\Chrome\User Data\Default\Login Data</code></p>
+
+<p>使用工具读取数据库文件，测试工具： SQLiteStudio</p>
+
+<p>下载地址：</p>
+
+<p>https://sqlitestudio.pl/index.rvt</p>
+
+<p><strong>注：</strong></p>
+
+<p>SQLiteStudio开源，特点是支持查看十六进制数据(SQLiteSpy不支持查看十六进制数据)</p>
+
+<p>成功读取数据库文件保存的信息，但password段无法显示，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/2-2.png" alt="Alt text" /></p>
+
+<p>选择<code class="language-plaintext highlighter-rouge">Form view</code>，查看十六进制格式，获得二次加密后的用户密码，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/2-3.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>如果Chrome正在运行，无法使用SQLiteStudio打开数据库文件Login Data，可将该文件复制后再打开</p>
+
+<h2 id="0x03-导出chrome浏览器中保存的密码">0x03 导出Chrome浏览器中保存的密码</h2>
+<hr />
+
+<p>首先，编写程序实现读取SQLite数据库文件，这里选择使用python实现</p>
+
+<p>开源代码很多，所以这里只给出一个示例</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from os import getenv
+import sqlite3
+import binascii
+conn = sqlite3.connect(getenv("APPDATA") + "\..\Local\Google\Chrome\User Data\Default\Login Data")
+cursor = conn.cursor()
+cursor.execute('SELECT action_url, username_value, password_value FROM logins')
+for result in cursor.fetchall():
+    print (binascii.b2a_hex(result[2]))
+</code></pre></div></div>
+
+<p>获得二次加密的用户密码，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/3-1.png" alt="Alt text" /></p>
+
+<p>参考Chromium开源代码，找到Chrome做二次加密的方法： <strong>通过Windows API CryptProtectData()实现</strong></p>
+
+<p>参考加密代码：</p>
+
+<p>https://github.com/scheib/chromium/blob/eb7e2441dd8878f733e43799ea77c2bab66816d3/chrome/browser/password_manager/password_store_win_unittest.cc#L107</p>
+
+<p>CryptProtectData()的说明可参考：</p>
+
+<p>https://msdn.microsoft.com/en-us/library/windows/desktop/aa380261(v=vs.85).aspx</p>
+
+<p>获得关键信息：</p>
+
+<h4 id="1对应解密函数为cryptunprotectdata">(1)对应解密函数为CryptUnprotectData</h4>
+
+<p>参考地址：</p>
+
+<p>https://msdn.microsoft.com/en-us/library/windows/desktop/aa380882(v=vs.85).aspx</p>
+
+<h4 id="2只有与加密数据的用户具有相同登录凭据的用户才能解密数据">(2)只有与加密数据的用户具有相同登录凭据的用户才能解密数据</h4>
+
+<p>也就是说，只能在当前用户的凭据下解密数据</p>
+
+<p>解密的开源代码也有很多，这里给出一个示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from os import getenv
+import sqlite3
+import win32crypt
+import binascii
+conn = sqlite3.connect(getenv("APPDATA") + "\..\Local\Google\Chrome\User Data\Default\Login Data")
+cursor = conn.cursor()
+cursor.execute('SELECT action_url, username_value, password_value FROM logins')
+for result in cursor.fetchall():
+    password = win32crypt.CryptUnprotectData(result[2], None, None, None, 0)[1]
+    print password
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>调用win32crypt.CryptUnprotectData需要安装pywin32</p>
+
+<p>下载地址：</p>
+
+<p>http://sourceforge.net/projects/pywin32/files/pywin32/Build%20219/pywin32-219.win32-py2.7.exe</p>
+
+<p>执行后，还原用户密码，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/3-2.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>如果Chrome正在运行，无法查询数据库文件Login Data，显示<code class="language-plaintext highlighter-rouge">sqlite3.OperationalError: database is locked</code></p>
+
+<p>综上，在实际导出的过程中，如果Chrome正在运行，需要先复制数据库文件，再尝试解密</p>
+
+<h2 id="0x04-如何导出另一系统下chrome浏览器中保存的密码">0x04 如何导出另一系统下Chrome浏览器中保存的密码</h2>
+<hr />
+
+<p>参照CryptProtectData()的说明，地址如下：</p>
+
+<p>https://msdn.microsoft.com/en-us/library/windows/desktop/aa380261(v=vs.85).aspx</p>
+
+<blockquote>
+  <p>“Usually, the only user who can decrypt the data is a user with the
+same logon credentials as the user who encrypted the data.In addition,
+the encryption and decryption must be done on the same computer. “</p>
+</blockquote>
+
+<p>是否可以断定，无法在另一系统下导出Chrome浏览器中保存的密码呢？</p>
+
+<p>答案是否定的</p>
+
+<p>Chrome密码还原工具chromepass提供了一个特别的功能： <code class="language-plaintext highlighter-rouge">Reading ChromePass passwords from external drive</code></p>
+
+<p>chromepass下载地址：</p>
+
+<p>http://www.nirsoft.net/utils/chromepass.html</p>
+
+<p>说明如下：</p>
+
+<blockquote>
+  <p>“you can also read the passwords stored by Chrome Web browser from an
+external profile in your current operating system or from another
+external drive”</p>
+</blockquote>
+
+<p>也就是说，使用chromepass能够导出当前系统下另一用户的Chrome密码</p>
+
+<p>操作界面如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/4-1.png" alt="Alt text" /></p>
+
+<p>既然如此，如果获得了另一系统下的相关配置文件，能否导出Chrome浏览器中保存的密码呢？</p>
+
+<p>当然可以</p>
+
+<p>解密需要获得三部分内容：</p>
+
+<ol>
+  <li>加密密钥(即Master Key文件)，位于<code class="language-plaintext highlighter-rouge">%appdata%\Microsoft\Protect</code>下对应sid文件夹下的文件</li>
+  <li>数据库文件Login Data</li>
+  <li>用户明文的密码，用于解密加密密钥</li>
+</ol>
+
+<p>由于chromepass程序的设计问题，以上文件需要组成特定格式，子目录格式如下：</p>
+
+<ul>
+  <li>
+    <p>\AppData\Local\Google\Chrome\User Data\Default\Login Data</p>
+  </li>
+  <li>
+    <p>\AppData\Roaming\Microsoft\Protect{sid}}\下保存key文件</p>
+  </li>
+</ul>
+
+<p><strong>注：</strong></p>
+
+<p>{sid}必须同原系统的对应</p>
+
+<p>eg.</p>
+
+<p><code class="language-plaintext highlighter-rouge">\AppData\Local\Google\Chrome\User Data\Default\Login Data</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">\AppData\Roaming\Microsoft\Protect\S-1-5-21-3453529135-4164765056-1075703908-1001\329c4147-0011-4ad6-829d-e32dcbd1bbd7</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/4-2.png" alt="Alt text" /></p>
+
+<p>使用chromepass选择该目录，填入用户明文密码，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/4-3.png" alt="Alt text" /></p>
+
+<p>成功解密，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-25/4-4.png" alt="Alt text" /></p>
+
+<p><strong>补充：</strong></p>
+
+<p>chromepass也可在命令行下使用</p>
+
+<h2 id="0x05-开源工具">0x05 开源工具</h2>
+<hr />
+
+<p>解密当前系统下Chrome浏览器中保存的密码，可供参考的工具：</p>
+
+<ol>
+  <li>命令行工具Chrome Password Dump，下载地址：</li>
+</ol>
+
+<p>http://securityxploded.com/chrome-password-dump.php</p>
+
+<ol>
+  <li>powershell实现的工具：</li>
+</ol>
+
+<p>https://raw.githubusercontent.com/EmpireProject/Empire/master/data/module_source/collection/Get-ChromeDump.ps1</p>
+
+<ol>
+  <li>python实现代码，可供参考的开源代码：</li>
+</ol>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from os import getenv
+import sqlite3
+import win32crypt
+import binascii
+conn = sqlite3.connect(getenv("APPDATA") + "\..\Local\Google\Chrome\User Data\Default\Login Data")
+cursor = conn.cursor()
+cursor.execute('SELECT action_url, username_value, password_value FROM logins')
+for result in cursor.fetchall():
+    password = win32crypt.CryptUnprotectData(result[2], None, None, None, 0)[1]
+    if password:
+        print 'Site: ' + result[0]
+        print 'Username: ' + result[1]
+        print 'Password: ' + password
+    else:
+        print "no password found"
+</code></pre></div></div>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了导出Chrome浏览器密码的原理和利用方法，成功解决一个实际问题： <code class="language-plaintext highlighter-rouge">通过加密密钥文件和用户明文密码，能够导出另一系统下Chrome浏览器中保存的密码</code></p>
+
+<p>如果只获得了用户密码ntlm hash，能否导出呢？</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

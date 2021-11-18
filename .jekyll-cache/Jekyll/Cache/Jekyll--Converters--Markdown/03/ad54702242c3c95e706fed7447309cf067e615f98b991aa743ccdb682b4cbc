@@ -1,0 +1,528 @@
+I"k<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>对于Exchange用户邮箱，可通过设置文件夹属性创建隐藏文件夹，用户使用owa网页登录和使用Outlook均无法查看隐藏文件夹中的内容。</p>
+
+<p>站在渗透测试的角度，我们可以利用隐藏文件夹存储重要的信息，作为C2通信的数据通道。</p>
+
+<p>本文将要介绍隐藏文件夹的使用方法，通过程序实现创建、访问和删除隐藏文件夹，结合利用思路给出防御建议。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>隐藏文件夹的创建原理</li>
+  <li>隐藏文件夹的常用操作</li>
+  <li>使用EWS Managed API的实现代码</li>
+  <li>使用EWS SOAP XML message的实现代码</li>
+  <li>开源代码</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-隐藏文件夹的创建原理">0x02 隐藏文件夹的创建原理</h2>
+<hr />
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/client-developer/exchange-web-services/how-to-work-with-hidden-folders-by-using-ews-in-exchange</p>
+
+<p>对于Exchange用户邮箱，将文件夹的扩展属性<code class="language-plaintext highlighter-rouge">PidTagAttributeHidden</code>(0x10F4000B)设置为true时，该文件夹对于用户不可见</p>
+
+<p>默认配置下，Exchange用户邮箱包括多个常用文件夹，例如收件箱、发件箱和草稿等，详细列表可参考：https://docs.microsoft.com/en-us/dotnet/api/microsoft.exchange.webservices.data.wellknownfoldername?view=exchange-ews-api#Microsoft_Exchange_WebServices_Data_WellKnownFolderName_MsgFolderRoot</p>
+
+<p>我们可以在根目录或者任一文件夹(例如收件箱)下创建一个文件夹，将其扩展属性<code class="language-plaintext highlighter-rouge">PidTagAttributeHidden</code>(0x10F4000B)设置为true，那么这个文件夹就是隐藏文件夹，对于用户不可见。同时，隐藏文件夹下的所有邮件对用户也是不可见的。更进一步，隐藏文件夹下的邮件内容和附件内容对用户同样不可见。但是我们只要知道了隐藏文件夹的Id，就能够通过程序进行数据交互。</p>
+
+<p>通过程序进行数据交互时，需要考虑以下操作：
+(这里以在Inbox下创建隐藏文件夹为例)</p>
+
+<ul>
+  <li>在Inbox下创建文件夹</li>
+  <li>查看Inbox下的文件夹列表</li>
+  <li>在Inbox下创建隐藏文件夹</li>
+  <li>查看Inbox下的隐藏文件夹列表</li>
+  <li>查看指定文件夹(无论是否具有隐藏属性)下的邮件列表</li>
+  <li>在指定文件夹(无论是否具有隐藏属性)下创建邮件</li>
+  <li>删除指定文件夹</li>
+  <li>为指定邮件添加附件</li>
+</ul>
+
+<h2 id="0x03-使用ews-managed-api的实现代码">0x03 使用EWS Managed API的实现代码</h2>
+<hr />
+
+<h3 id="1在inbox下创建文件夹">1.在Inbox下创建文件夹</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private static void CreateFolderofInbox(ExchangeService service)
+{
+                Folder folder = new Folder(service);
+                folder.DisplayName = "Custom Folder";
+                folder.Save(WellKnownFolderName.Inbox);
+                Console.WriteLine("[*] FolderId:" + folder.Id);
+}
+</code></pre></div></div>
+
+<h3 id="2查看inbox下的文件夹列表">2.查看Inbox下的文件夹列表</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private static void ListFolderofInbox(ExchangeService service)
+{
+                FindFoldersResults findResults = null;
+                FolderView view = new FolderView(int.MaxValue) { Traversal = FolderTraversal.Deep };
+                findResults = service.FindFolders(WellKnownFolderName.Inbox, view);
+                foreach (Folder folder in findResults.Folders)
+                {
+                    Console.WriteLine("\r\n");
+                    Console.WriteLine("[*]DisplayName:{0}", folder.DisplayName);
+                    Console.WriteLine("[*]Id:{0}", folder.Id);
+                    Console.WriteLine("[*]TotalCount:{0}", folder.TotalCount);
+                }
+}
+</code></pre></div></div>
+
+<h3 id="3在inbox下创建隐藏文件夹">3.在Inbox下创建隐藏文件夹</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private static void CreateHiddenFolderofInbox(ExchangeService service)
+{
+                Folder folder = new Folder(service);
+                folder.DisplayName = "Custom Hidden Folder";
+                folder.Save(WellKnownFolderName.Inbox);
+                Console.WriteLine("[*] Hidden FolderId:" + folder.Id);
+                
+                // Create an extended property definition for the PidTagAttributeHidden property.
+                ExtendedPropertyDefinition isHiddenProp = new ExtendedPropertyDefinition(0x10f4, MapiPropertyType.Boolean);
+                PropertySet propSet = new PropertySet(isHiddenProp);
+                // Bind to a folder and retrieve the PidTagAttributeHidden property.
+                Folder folderhidden = Folder.Bind(service, folder.Id, propSet);
+                // Set the PidTagAttributeHidden property to true.
+                folderhidden.SetExtendedProperty(isHiddenProp, true);
+                // Save the changes.
+                folderhidden.Update();
+}
+</code></pre></div></div>
+
+<h3 id="4查看inbox下的隐藏文件夹列表">4.查看Inbox下的隐藏文件夹列表</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private static void ListHiddenFolderofInbox(ExchangeService service)
+{
+                // Create an extended property definition for the PidTagAttributeHidden property.
+                ExtendedPropertyDefinition isHiddenProp = new ExtendedPropertyDefinition(0x10f4, MapiPropertyType.Boolean);
+                // Create a folder view to retrieve up to 100 folders and 
+                // retrieve only the PidTagAttributeHidden and the display name.
+                FolderView folderView = new FolderView(100);
+                folderView.PropertySet = new PropertySet(isHiddenProp, FolderSchema.DisplayName);
+                // Indicate a Traversal value of Deep, so that all subfolders are retrieved.
+                folderView.Traversal = FolderTraversal.Deep;
+                // Find all hidden folders under the MsgFolderRoot.
+                // This call results in a FindFolder call to EWS.
+                FindFoldersResults findFolder = service.FindFolders(WellKnownFolderName.Inbox,
+                        new SearchFilter.IsEqualTo(isHiddenProp, true), folderView);
+                // Display the folder ID and display name of each hidden folder.
+                foreach (Folder folder in findFolder)
+                {
+                    Console.WriteLine("[*] DisplayName: {0}", folder.DisplayName);
+                    Console.WriteLine("[*] FolderId: {0}", folder.Id);                    
+                    Console.WriteLine("\r\n");
+                }
+}
+</code></pre></div></div>
+
+<h3 id="5查看指定文件夹无论是否具有隐藏属性下的邮件列表">5.查看指定文件夹(无论是否具有隐藏属性)下的邮件列表</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private static void ListMailofFolder(FolderId folderId, ExchangeService service)
+{
+                IdString = folderId;
+                Folder Folders = Folder.Bind(service, IdString);
+                FindItemsResults&lt;Item&gt; findResults = null;
+                ItemView view = new ItemView(int.MaxValue);
+                PropertySet itempropertyset = new PropertySet(BasePropertySet.FirstClassProperties);
+                itempropertyset.RequestedBodyType = BodyType.Text;
+                view.PropertySet = itempropertyset;
+                findResults = Folders.FindItems(view);
+                foreach (Item item in findResults.Items)
+                {
+                    Console.WriteLine("\r\n");
+                    if (item.Subject != null)
+                    {
+                        Console.WriteLine("[*]Subject:{0}", item.Subject);
+                    }
+                    else
+                    {
+                        Console.WriteLine("[*]Subject:&lt;null&gt;");
+                    }
+
+                    Console.WriteLine("[*]HasAttachments:{0}", item.HasAttachments);
+                    if (item.HasAttachments)
+                    {
+                        EmailMessage message = EmailMessage.Bind(service, item.Id, new PropertySet(ItemSchema.Attachments));
+                        foreach (Attachment attachment in message.Attachments)
+                        {
+                            FileAttachment fileAttachment = attachment as FileAttachment;
+                            fileAttachment.Load();
+                            Console.WriteLine(" - Attachments:{0}", fileAttachment.Name);
+                        }
+                    }
+                    Console.WriteLine("[*]ItemId:{0}", item.Id);
+                    Console.WriteLine("[*]DateTimeCreated:{0}", item.DateTimeCreated);
+                    Console.WriteLine("[*]DateTimeReceived:{0}", item.DateTimeReceived);
+                    Console.WriteLine("[*]DateTimeSent:{0}", item.DateTimeSent);
+                    Console.WriteLine("[*]DisplayCc:{0}", item.DisplayCc);
+                    Console.WriteLine("[*]DisplayTo:{0}", item.DisplayTo);
+                    Console.WriteLine("[*]InReplyTo:{0}", item.InReplyTo);
+                    Console.WriteLine("[*]Size:{0}", item.Size);
+                    item.Load(itempropertyset);
+                    if (item.Body.ToString().Length &gt; 100)
+                    {
+                        item.Body = item.Body.ToString().Substring(0, 100);
+                        Console.WriteLine("[*]MessageBody(too big,only output 100):{0}", item.Body);
+                    }
+                    else
+                    {
+                        Console.WriteLine("[*]MessageBody:{0}", item.Body);
+                    }
+                }
+}
+</code></pre></div></div>
+
+<h3 id="6在指定文件夹无论是否具有隐藏属性下创建邮件">6.在指定文件夹(无论是否具有隐藏属性)下创建邮件</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private static void CreateMail(FolderId folderId, ExchangeService service)
+{
+                EmailMessage msg = new EmailMessage(service);
+                msg.Subject = "test mail";               
+                msg.Save(folderId);
+}
+</code></pre></div></div>
+
+<h3 id="7为指定邮件添加附件">7.为指定邮件添加附件</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private static void AddFileAttachment(ItemId id, string fileName, ExchangeService service)
+{
+                    EmailMessage message = EmailMessage.Bind(service, id);
+                    message.Attachments.AddFileAttachment(fileName);
+                    message.Update(ConflictResolutionMode.AlwaysOverwrite);
+                    Console.WriteLine("\r\n[+]AddAttachment success");
+}
+</code></pre></div></div>
+
+<h3 id="8删除指定文件夹">8.删除指定文件夹</h3>
+
+<p>EWS Managed API不支持直接删除，需要构造XML格式的SOAP包</p>
+
+<h2 id="0x04-使用ews-soap-xml-message的实现代码">0x04 使用EWS SOAP XML message的实现代码</h2>
+<hr />
+
+<p>为了节省篇幅，只介绍<code class="language-plaintext highlighter-rouge">&lt;soap:Body&gt;</code>中的内容</p>
+
+<h3 id="1在inbox下创建文件夹-1">1.在Inbox下创建文件夹</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;m:CreateFolder&gt;
+  &lt;m:ParentFolderId&gt;
+    &lt;t:DistinguishedFolderId Id="inbox" /&gt;
+  &lt;/m:ParentFolderId&gt;
+  &lt;m:Folders&gt;
+    &lt;t:Folder&gt;
+      &lt;t:DisplayName&gt;{name}&lt;/t:DisplayName&gt;
+    &lt;/t:Folder&gt;
+  &lt;/m:Folders&gt;
+&lt;/m:CreateFolder&gt;
+</code></pre></div></div>
+
+<h3 id="2查看inbox下的文件夹列表-1">2.查看Inbox下的文件夹列表</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;m:FindFolder Traversal="Deep"&gt;
+  &lt;m:FolderShape&gt;
+    &lt;t:BaseShape&gt;AllProperties&lt;/t:BaseShape&gt;
+  &lt;/m:FolderShape&gt;
+  &lt;m:IndexedPageFolderView MaxEntriesReturned="2147483647" Offset="0" BasePoint="Beginning" /&gt;
+  &lt;m:ParentFolderIds&gt;
+    &lt;t:DistinguishedFolderId Id="inbox" /&gt;
+  &lt;/m:ParentFolderIds&gt;
+&lt;/m:FindFolder&gt;
+</code></pre></div></div>
+
+<h3 id="3在inbox下创建隐藏文件夹-1">3.在Inbox下创建隐藏文件夹</h3>
+
+<p>这里需要发送三个数据包，依次为创建文件夹，添加隐藏属性和更新隐藏属性</p>
+
+<p>创建文件夹：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>   &lt;m:CreateFolder&gt;
+      &lt;m:ParentFolderId&gt;
+        &lt;t:DistinguishedFolderId Id="inbox" /&gt;
+      &lt;/m:ParentFolderId&gt;
+      &lt;m:Folders&gt;
+        &lt;t:Folder&gt;
+          &lt;t:DisplayName&gt;{name}&lt;/t:DisplayName&gt;
+        &lt;/t:Folder&gt;
+      &lt;/m:Folders&gt;
+    &lt;/m:CreateFolder&gt;
+</code></pre></div></div>
+
+<p>添加隐藏属性：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;m:GetFolder&gt;
+  &lt;m:FolderShape&gt;
+    &lt;t:BaseShape&gt;IdOnly&lt;/t:BaseShape&gt;
+    &lt;t:AdditionalProperties&gt;
+      &lt;t:ExtendedFieldURI PropertyTag="4340" PropertyType="Boolean" /&gt;
+    &lt;/t:AdditionalProperties&gt;
+  &lt;/m:FolderShape&gt;
+  &lt;m:FolderIds&gt;
+    &lt;t:FolderId Id="{id}" ChangeKey="{key}" /&gt;
+  &lt;/m:FolderIds&gt;
+&lt;/m:GetFolder&gt;
+</code></pre></div></div>
+
+<p>更新隐藏属性：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>   &lt;m:UpdateFolder&gt;
+      &lt;m:FolderChanges&gt;
+        &lt;t:FolderChange&gt;
+          &lt;t:FolderId Id="{id}" ChangeKey="{key}" /&gt;
+          &lt;t:Updates&gt;
+            &lt;t:SetFolderField&gt;
+              &lt;t:ExtendedFieldURI PropertyTag="4340" PropertyType="Boolean" /&gt;
+              &lt;t:Folder&gt;
+                &lt;t:ExtendedProperty&gt;
+                  &lt;t:ExtendedFieldURI PropertyTag="4340" PropertyType="Boolean" /&gt;
+                  &lt;t:Value&gt;true&lt;/t:Value&gt;
+                &lt;/t:ExtendedProperty&gt;
+              &lt;/t:Folder&gt;
+            &lt;/t:SetFolderField&gt;
+          &lt;/t:Updates&gt;
+        &lt;/t:FolderChange&gt;
+      &lt;/m:FolderChanges&gt;
+    &lt;/m:UpdateFolder&gt;
+</code></pre></div></div>
+
+<h3 id="4查看inbox下的隐藏文件夹列表-1">4.查看Inbox下的隐藏文件夹列表</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>   &lt;m:FindFolder Traversal="Deep"&gt;
+      &lt;m:FolderShape&gt;
+        &lt;t:BaseShape&gt;IdOnly&lt;/t:BaseShape&gt;
+        &lt;t:AdditionalProperties&gt;
+          &lt;t:ExtendedFieldURI PropertyTag="4340" PropertyType="Boolean" /&gt;
+          &lt;t:FieldURI FieldURI="folder:DisplayName" /&gt;
+        &lt;/t:AdditionalProperties&gt;
+      &lt;/m:FolderShape&gt;
+      &lt;m:IndexedPageFolderView MaxEntriesReturned="100" Offset="0" BasePoint="Beginning" /&gt;
+      &lt;m:Restriction&gt;
+        &lt;t:IsEqualTo&gt;
+          &lt;t:ExtendedFieldURI PropertyTag="4340" PropertyType="Boolean" /&gt;
+          &lt;t:FieldURIOrConstant&gt;
+            &lt;t:Constant Value="true" /&gt;
+          &lt;/t:FieldURIOrConstant&gt;
+        &lt;/t:IsEqualTo&gt;
+      &lt;/m:Restriction&gt;
+      &lt;m:ParentFolderIds&gt;
+        &lt;t:DistinguishedFolderId Id="inbox" /&gt;
+      &lt;/m:ParentFolderIds&gt;
+    &lt;/m:FindFolder&gt;
+</code></pre></div></div>
+
+<h3 id="5查看指定文件夹无论是否具有隐藏属性下的邮件列表-1">5.查看指定文件夹(无论是否具有隐藏属性)下的邮件列表</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;m:FindItem Traversal="Shallow"&gt;
+  &lt;m:ItemShape&gt;
+    &lt;t:BaseShape&gt;AllProperties&lt;/t:BaseShape&gt;
+    &lt;t:BodyType&gt;Text&lt;/t:BodyType&gt;
+  &lt;/m:ItemShape&gt;
+  &lt;m:IndexedPageItemView MaxEntriesReturned="2147483647" Offset="0" BasePoint="Beginning" /&gt;
+  &lt;m:ParentFolderIds&gt;
+    &lt;t:FolderId Id="{id}" /&gt;
+  &lt;/m:ParentFolderIds&gt;
+&lt;/m:FindItem&gt;
+</code></pre></div></div>
+
+<h3 id="6在指定文件夹无论是否具有隐藏属性下创建邮件-1">6.在指定文件夹(无论是否具有隐藏属性)下创建邮件</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;m:CreateItem MessageDisposition="SaveOnly"&gt;
+  &lt;m:SavedItemFolderId&gt;
+    &lt;t:FolderId Id="{id}" /&gt;
+  &lt;/m:SavedItemFolderId&gt;
+  &lt;m:Items&gt;
+    &lt;t:Message&gt;
+      &lt;t:Subject&gt;test mail&lt;/t:Subject&gt;
+    &lt;/t:Message&gt;
+  &lt;/m:Items&gt;
+&lt;/m:CreateItem&gt;
+</code></pre></div></div>
+
+<h3 id="7为指定邮件添加附件-1">7.为指定邮件添加附件</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;m:CreateAttachment&gt;
+  &lt;m:ParentItemId Id="{id}" ChangeKey="{key}"/&gt;
+  &lt;m:Attachments&gt;
+    &lt;t:FileAttachment&gt;
+      &lt;t:Name&gt;{name}&lt;/t:Name&gt;
+      &lt;t:Content&gt;{data}&lt;/t:Content&gt;
+    &lt;/t:FileAttachment&gt;
+  &lt;/m:Attachments&gt;
+&lt;/m:CreateAttachment&gt;
+</code></pre></div></div>
+
+<h3 id="8删除指定文件夹-1">8.删除指定文件夹</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;m:DeleteItem DeleteType="HardDelete" xmlns="https://schemas.microsoft.com/exchange/services/2006/messages"&gt;
+  &lt;m:ItemIds&gt;
+    &lt;t:ItemId Id="{id}"/&gt;
+  &lt;/m:ItemIds&gt;
+&lt;/m:DeleteItem&gt;
+</code></pre></div></div>
+
+<h2 id="0x05-开源代码">0x05 开源代码</h2>
+<hr />
+
+<h3 id="1使用ews-managed-api">1.使用EWS Managed API</h3>
+
+<p>https://github.com/3gstudent/ewsManage</p>
+
+<p>使用示例</p>
+
+<p>(1)在Inbox下创建隐藏文件夹test1</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode CreateHiddenFolderofInbox -Name test1
+</code></pre></div></div>
+
+<p>获得文件夹对应的FolderId:<code class="language-plaintext highlighter-rouge">AAMkADc4YjRlNDc1LWI0YjctNDEzZi1hNTQ5LWZkYWY0ZGZhZDM0NgAuAAAAAABEBlGH6URWQp6Nlg9RxLmyAQA1ZCfAg9a0Sq75no2JOzsqAAAAA1FUAAA=</code></p>
+
+<p>(2)查看Inbox下的隐藏文件夹</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ListHiddenFolder -Folder Inbox
+</code></pre></div></div>
+
+<p>(3)在隐藏文件夹test1下创建测试邮件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode CreateTestMail -Id AAMkADc4YjRlNDc1LWI0YjctNDEzZi1hNTQ5LWZkYWY0ZGZhZDM0NgAuAAAAAABEBlGH6URWQp6Nlg9RxLmyAQA1ZCfAg9a0Sq75no2JOzsqAAAAA1FUAAA=
+</code></pre></div></div>
+
+<p>(4)查看隐藏文件夹test1下的所有邮件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ListMailofFolder -Id AAMkADc4YjRlNDc1LWI0YjctNDEzZi1hNTQ5LWZkYWY0ZGZhZDM0NgAuAAAAAABEBlGH6URWQp6Nlg9RxLmyAQA1ZCfAg9a0Sq75no2JOzsqAAAAA1FUAAA=
+</code></pre></div></div>
+
+<p>获得测试邮件对应的ItemId:<code class="language-plaintext highlighter-rouge">AAMkADc4YjRlNDc1LWI0YjctNDEzZi1hNTQ5LWZkYWY0ZGZhZDM0NgBGAAAAAABEBlGH6URWQp6Nlg9RxLmyBwA1ZCfAg9a0Sq75no2JOzsqAAAAA1FUAAA1ZCfAg9a0Sq75no2JOzsqAAAAA1FVAAA=</code></p>
+
+<p>(5)向测试邮件添加附件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode AddAttachment -Id AAMkADc4YjRlNDc1LWI0YjctNDEzZi1hNTQ5LWZkYWY0ZGZhZDM0NgAuAAAAAABEBlGH6URWQp6Nlg9RxLmyAQA1ZCfAg9a0Sq75no2JOzsqAAAAA1FUAAA= -AttachmentFile c:\test\1.exe
+</code></pre></div></div>
+
+<p>(6)读取测试邮件的内容</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ViewMail -Id AAMkADc4YjRlNDc1LWI0YjctNDEzZi1hNTQ5LWZkYWY0ZGZhZDM0NgAuAAAAAABEBlGH6URWQp6Nlg9RxLmyAQA1ZCfAg9a0Sq75no2JOzsqAAAAA1FUAAA=
+</code></pre></div></div>
+
+<p>(7)保存测试邮件中的附件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode SaveAttachment -Id AAMkADc4YjRlNDc1LWI0YjctNDEzZi1hNTQ5LWZkYWY0ZGZhZDM0NgAuAAAAAABEBlGH6URWQp6Nlg9RxLmyAQA1ZCfAg9a0Sq75no2JOzsqAAAAA1FUAAA=
+</code></pre></div></div>
+
+<p>(8)删除测试邮件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode DeleteMail -Id AAMkADc4YjRlNDc1LWI0YjctNDEzZi1hNTQ5LWZkYWY0ZGZhZDM0NgAuAAAAAABEBlGH6URWQp6Nlg9RxLmyAQA1ZCfAg9a0Sq75no2JOzsqAAAAA1FUAAA=
+</code></pre></div></div>
+
+<h3 id="2使用ews-soap-xml-message">2.使用EWS SOAP XML message</h3>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/ewsManage.py</p>
+
+<p>(1)在Inbox下创建隐藏文件夹test2</p>
+
+<p>创建文件夹：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 createfolderofinbox 
+</code></pre></div></div>
+
+<p>获得Id:<code class="language-plaintext highlighter-rouge">AAMkADc4YjRlNDc1LWI0YjctNDEzZi1hNTQ5LWZkYWY0ZGZhZDM0NgAuAAAAAABEBlGH6URWQp6Nlg9RxLmyAQA1ZCfAg9a0Sq75no2JOzsqAAAAA1U+AAA=，ChangeKey:AQAAABYAAAA1ZCfAg9a0Sq75no2JOzsqAAAAAGE/</code></p>
+
+<p>添加隐藏属性：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 SetHiddenPropertyType
+</code></pre></div></div>
+
+<p>更新隐藏属性：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 UpdateHiddenPropertyType
+</code></pre></div></div>
+
+<p>(2)查看Inbox下的隐藏文件夹</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 listhiddenfolderofinbox
+</code></pre></div></div>
+
+<p>(3)在隐藏文件夹test1下创建测试邮件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 createtestmail
+</code></pre></div></div>
+
+<p>(4)查看隐藏文件夹test1下的所有邮件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 listmailoffolder
+</code></pre></div></div>
+
+<p>(5)向测试邮件添加附件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 createattachment
+</code></pre></div></div>
+
+<p>(6)读取测试邮件的内容</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 getmail
+</code></pre></div></div>
+
+<p>(7)保存测试邮件中的附件</p>
+
+<p>获得附件对应的Id:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 getattachment 
+</code></pre></div></div>
+
+<p>保存附件：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 saveattachment 
+</code></pre></div></div>
+
+<p>(8)删除测试邮件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 deletemail
+</code></pre></div></div>
+
+<p>(9)删除测试邮件隐藏文件夹test1</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 deletefolder
+</code></pre></div></div>
+
+<h2 id="0x06-防御检测">0x06 防御检测</h2>
+<hr />
+
+<p>1.通过程序查看是否存在隐藏文件夹</p>
+
+<p>例如：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ListHiddenFolder -Folder Inbox
+
+ewsManage.py 192.168.1.1 443 plaintext test.com user1 password1 listhiddenfolderofinbox
+</code></pre></div></div>
+
+<p>2.查看邮件用户上次登录时间</p>
+
+<p>使用Exchange Server PowerShell：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-MailboxDatabase | Get-MailboxStatistics |fl DisplayName,LastLogonTime
+</code></pre></div></div>
+
+<p>3.查看ews访问日志</p>
+
+<p>默认位置：<code class="language-plaintext highlighter-rouge">C:\inetpub\logs\LogFiles\W3SVC1</code>，搜索关键词<code class="language-plaintext highlighter-rouge">/EWS/Exchange.asmx</code></p>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文介绍了Exchange用户邮箱隐藏文件夹的使用方法，分别介绍使用EWS Managed API和EWS SOAP XML message实现创建、访问和删除隐藏文件夹的方法，开源代码<a href="https://github.com/3gstudent/ewsManage">ewsManage</a>和<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/ewsManage.py">ewsManage.py</a>，结合利用思路给出防御建议</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

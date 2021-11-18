@@ -1,0 +1,4 @@
+I"<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+<p>最近学习了Matt Graeber@mattifestation分享的方法《WMI Persistence using wmic.exe》，让我对WMI的攻击技巧有了新的认识，本文将结合之前的研究心得，分享利用wmic的一些技巧。</p>
+:ET

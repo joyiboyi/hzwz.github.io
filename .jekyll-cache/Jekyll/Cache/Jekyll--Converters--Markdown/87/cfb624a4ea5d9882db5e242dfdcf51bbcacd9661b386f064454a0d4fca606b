@@ -1,0 +1,226 @@
+I"�"<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-DNS%E8%AE%B0%E5%BD%95%E7%9A%84%E8%8E%B7%E5%8F%96">《域渗透——DNS记录的获取》</a>介绍了域渗透中获得DNS管理员权限后获取DNS记录的方法，而更普遍的情况是只有域普通用户的权限，也需要获得DNS记录。</p>
+
+<p>本文将会参考公开的资料，整理域普通用户获得DNS记录的方法，修复dns-dump.ps1在高版本Windows系统下的bug</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>实现原理</li>
+  <li>开源的工具和方法</li>
+</ul>
+
+<h2 id="0x02-实现原理">0x02 实现原理</h2>
+<hr />
+
+<h3 id="1sharpadidnsdump的实现原理">1.SharpAdidnsdump的实现原理</h3>
+
+<p>先通过LDAP查询获得域内计算机的名称，再通过DNS查询获得对应的IP</p>
+
+<p>详细实现细节可参考：</p>
+
+<p>https://github.com/b4rtik/SharpAdidnsdump</p>
+
+<p>测试环境： test.com</p>
+
+<h4 id="1通过ldap查询获得域内计算机的名称">(1)通过LDAP查询获得域内计算机的名称</h4>
+
+<p>对应LDAP的查询参数如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>LDAP://test.com/DC=test.com,CN=microsoftdns,DC=DomainDnsZones,DC=test,DC=com
+(&amp;(!(objectClass=DnsZone))(!(DC=@))(!(DC=*arpa))(!(DC=*DNSZones)))
+</code></pre></div></div>
+
+<h4 id="2通过dns查询获得域内计算机对应的ip">(2)通过DNS查询获得域内计算机对应的IP</h4>
+
+<p>使用<code class="language-plaintext highlighter-rouge">Dns.GetHostEntry</code>方法，参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/dotnet/api/system.net.dns.gethostentry?redirectedfrom=MSDN&amp;view=netframework-3.5#System_Net_Dns_GetHostEntry_System_String_</p>
+
+<h3 id="2dns-dump的实现原理">2.dns-dump的实现原理</h3>
+
+<p>先通过LDAP查询获得DNS记录，对二进制的DNS记录进行解码，获得实际内容</p>
+
+<p>DNS记录解码的细节可参考：</p>
+
+<p>https://github.com/mmessano/PowerShell/blob/master/dns-dump.ps1#L483</p>
+
+<h2 id="0x03-开源的工具和方法">0x03 开源的工具和方法</h2>
+<hr />
+
+<p>测试环境：</p>
+
+<ul>
+  <li>test.com</li>
+  <li>Server2012 R2</li>
+</ul>
+
+<h3 id="1先通过ldap查询获得域内计算机的名称再通过dns查询获得对应的ip">1.先通过LDAP查询获得域内计算机的名称，再通过DNS查询获得对应的IP</h3>
+
+<h4 id="1sharpadidnsdump">(1)SharpAdidnsdump</h4>
+
+<p>https://github.com/b4rtik/SharpAdidnsdump</p>
+
+<p>C#实现，用于查询DNS记录</p>
+
+<p>用法：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SharpAdidnsdump test.com
+</code></pre></div></div>
+
+<p>获得的结果完整，同dnscmd的结果一致</p>
+
+<p><strong>注：</strong></p>
+
+<p>dnscmd的用法可以参考之前的文章<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-DNS%E8%AE%B0%E5%BD%95%E7%9A%84%E8%8E%B7%E5%8F%96">《域渗透——DNS记录的获取》</a></p>
+
+<h4 id="2adidnsdump">(2)adidnsdump</h4>
+
+<p>https://github.com/dirkjanm/adidnsdump</p>
+
+<p>https://dirkjanm.io/getting-in-the-zone-dumping-active-directory-dns-with-adidnsdump/</p>
+
+<p>Python实现，用于查询DNS记录</p>
+
+<p>适用于Linux，由于需要安装impacket，因此无法直接在Windows系统下使用</p>
+
+<p>安装方法：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/SecureAuthCorp/impacket.git
+cd impacket
+pip install .
+cd ..
+git clone https://github.com/dirkjanm/adidnsdump
+cd adidnsdump
+pip install .
+</code></pre></div></div>
+
+<p>需要先获得一个域用户的凭据(明文口令或NTLM hash)</p>
+
+<p>用法1.直接远程查询：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adidnsdump -u test\\testuser1 -p test123! dc.test.com -r
+</code></pre></div></div>
+
+<p>用法2.通过socks代理进行查询：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>proxychains adidnsdump -u test\\testuser1 -p test123! dc.test.com -r --dns-tcp
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>还可以使用NTLM hash作为登录凭据</p>
+
+<h3 id="2先通过ldap查询获得dns记录对二进制的dns记录进行解码获得实际内容">2.先通过LDAP查询获得DNS记录，对二进制的DNS记录进行解码，获得实际内容</h3>
+
+<h4 id="1dns-dump">(1)dns-dump</h4>
+
+<p>https://github.com/mmessano/PowerShell/blob/master/dns-dump.ps1</p>
+
+<p>Powershell实现，用于查询DNS记录</p>
+
+<p>这个powershell脚本较为古老，我在我的测试环境Server2008R2和Server2012R2下均失败</p>
+
+<p>经过分析，需要修改LDAP的查询语句，新的脚本已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Powershell/blob/master/dns-dump.ps1</p>
+
+<p>用法：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Powershell -ep bypass -f dns-dump.ps1 -zone test.com
+</code></pre></div></div>
+
+<p>获得的结果完整，同dnscmd的结果一致</p>
+
+<h4 id="2powerview">(2)PowerView</h4>
+
+<p>https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1</p>
+
+<p>也可用于查询DNS记录</p>
+
+<p>其中的Convert-DNSRecord可用来对二进制的DNS记录进行解码：</p>
+
+<p>https://github.com/PowerShellMafia/PowerSploit/blob/master/Recon/PowerView.ps1#L1814</p>
+
+<p>用法如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>import-module PowerView.ps1
+Get-DNSRecord -ZoneName test.com
+</code></pre></div></div>
+
+<h3 id="3其他工具">3.其他工具</h3>
+
+<h4 id="1adfind">(1)AdFind</h4>
+
+<p>C++实现(未开源)，用于查询域内信息</p>
+
+<p>http://www.joeware.net/freetools/tools/adfind/index.htm</p>
+
+<p>常用命令如下：</p>
+
+<p>列出域控制器名称：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AdFind -sc dclist
+</code></pre></div></div>
+
+<p>查询当前域中在线的计算机：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AdFind -sc computers_active
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>对应的LDAP查询条件如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Transformed Filter: (&amp;(objectcategory=computer)(!(useraccountcontrol:1.2.840.113556.1.4.803:=2))(pwdlastset&gt;=131932198595370000)(|(!lastlogontimestamp=*)(&amp;(lastlogontimestamp=*)(lastlogontimestamp&gt;=131932198595370000))))
+</code></pre></div></div>
+
+<p>查询当前域中在线的计算机(只显示名称和操作系统)：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AdFind -sc computers_active name operatingSystem
+</code></pre></div></div>
+
+<p>查询当前域中所有计算机：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AdFind -f "objectcategory=computer"
+</code></pre></div></div>
+
+<p>查询当前域中所有计算机(只显示名称和操作系统)：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AdFind -f "objectcategory=computer" name operatingSystem
+</code></pre></div></div>
+
+<p>查询域内所有用户：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AdFind -users name
+</code></pre></div></div>
+
+<p>查询所有GPO：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AdFind -sc gpodmp
+</code></pre></div></div>
+
+<p>或</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>AdFind -gpo
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>查询GPO对应之前的文章<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-%E5%88%A9%E7%94%A8GPO%E4%B8%AD%E7%9A%84%E8%AE%A1%E5%88%92%E4%BB%BB%E5%8A%A1%E5%AE%9E%E7%8E%B0%E8%BF%9C%E7%A8%8B%E6%89%A7%E8%A1%8C">《域渗透——利用GPO中的计划任务实现远程执行》</a></p>
+
+<h2 id="0x04-小结">0x04 小结</h2>
+<hr />
+
+<p>本文介绍了多种域普通用户获得DNS记录的方法，适用于不同的环境，在实际使用过程中，某些情况下AdFind的查询效率较低。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

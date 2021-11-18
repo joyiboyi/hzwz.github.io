@@ -1,0 +1,408 @@
+I"�><h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>上篇文章介绍了使用Apache的mod_rewrite模块来实现http流量分发，本文将在此基础上介绍https的流量分发，对客户端的证书进行判断，若证书有效，才会将流量转发至真实服务器。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>Windows系统下配置Apache开启ssl</li>
+  <li>Ubuntu系统下配置Apache开启ssl</li>
+  <li>使用openssl生成证书的方法和难点</li>
+  <li>Apache Https双向认证的配置</li>
+  <li>实现https流量分发的过程</li>
+</ul>
+
+<h2 id="0x02-windows系统下配置apache开启ssl">0x02 Windows系统下配置Apache开启ssl</h2>
+<hr />
+
+<h3 id="1下载包含openssl的apache">1、下载包含openssl的Apache</h3>
+
+<p>地址：</p>
+
+<p>http://httpd.apache.org/download.cgi</p>
+
+<p>选择需要的版本，测试版本Apache 2.4.33，下载地址：</p>
+
+<p>https://www.apachehaus.com/cgi-bin/download.plx?dli=wUWZ1allWW00kej9iUG5UeJVlUGRVYRdnWzQmW</p>
+
+<h3 id="2安装">2、安装</h3>
+
+<p>解压后通过命令行安装：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd \Apace24\bin
+httpd -k install
+</code></pre></div></div>
+
+<h3 id="3配置httpdconf">3、配置httpd.conf</h3>
+
+<p>位于<code class="language-plaintext highlighter-rouge">\Apace24\conf\httpd.conf</code></p>
+
+<h4 id="1">(1)</h4>
+
+<p>定位：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#LoadModule ssl_module modules/mod_ssl.so 
+</code></pre></div></div>
+
+<p>去掉#</p>
+
+<h4 id="2">(2)</h4>
+
+<p>定位：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;IfModule ssl_module&gt;
+Include conf/extra/httpd-ahssl.conf
+SSLRandomSeed startup builtin
+SSLRandomSeed connect builtin
+&lt;/IfModule&gt;
+</code></pre></div></div>
+
+<p>将<code class="language-plaintext highlighter-rouge">Include conf/extra/httpd-ahssl.conf</code>改为<code class="language-plaintext highlighter-rouge">Include conf/extra/httpd-ssl.conf</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>httpd-ahssl.conf是Apache自带的ssl配置，默认生成了可用的私钥和证书(位于<code class="language-plaintext highlighter-rouge">\Apace24\conf\ssl</code>)，也可以直接修改httpd-ahssl.conf进行配置</p>
+
+<h3 id="4配置httpd-sslconf">4、配置httpd-ssl.conf</h3>
+
+<p>位于<code class="language-plaintext highlighter-rouge">\Apache24\conf\extra\httpd-ssl.conf</code></p>
+
+<h4 id="1-1">(1)</h4>
+
+<p>定位：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;VirtualHost _default_:443&gt;
+
+#   General setup for the virtual host
+DocumentRoot "${SRVROOT}/htdocs"
+ServerName www.example.com:443
+</code></pre></div></div>
+
+<p>修改为：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;VirtualHost _default_:443&gt;
+
+#   General setup for the virtual host
+DocumentRoot "${SRVROOT}/htdocs"
+ServerName test.com:443
+</code></pre></div></div>
+
+<h4 id="2-1">(2)</h4>
+
+<p>定位：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SSLCertificateFile "${SRVROOT}/conf/server.crt"
+</code></pre></div></div>
+
+<p>修改为自己证书文件的路径(后面会介绍生成方法)</p>
+
+<h4 id="3">(3)</h4>
+
+<p>定位：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SSLCertificateKeyFile "${SRVROOT}/conf/server.key"
+</code></pre></div></div>
+
+<p>修改为自己私钥文件的路径(后面会介绍生成方法)</p>
+
+<h3 id="5重启apache">5、重启apache</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>httpd.exe -k restart
+</code></pre></div></div>
+
+<h2 id="0x03-ubuntu系统下配置apache开启ssl">0x03 Ubuntu系统下配置Apache开启ssl</h2>
+<hr />
+
+<h3 id="1安装apache">1、安装apache</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo apt-get install apache2
+</code></pre></div></div>
+
+<h3 id="2安装openssl">2、安装openssl</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo apt-get install openssl
+</code></pre></div></div>
+
+<h3 id="3开启apache-ssl模块">3、开启Apache SSL模块</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>a2enmod ssl
+</code></pre></div></div>
+
+<h3 id="4编辑文件etcapache2sites-enableddefault-sslconf">4、编辑文件<code class="language-plaintext highlighter-rouge">/etc/apache2/sites-enabled/default-ssl.conf</code></h3>
+
+<p>指定私钥文件和签名证书的路径</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SSLEngine on
+SSLCertificateFile /etc/apache2/ssl/test.com.crt
+SSLCertificateKeyFile /etc/apache2/ssl/test.com.key
+</code></pre></div></div>
+
+<h3 id="5启用apache默认的ssl虚拟主机">5、启用Apache默认的SSL虚拟主机</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>a2ensite default-ssl
+</code></pre></div></div>
+
+<h3 id="6重启apache">6、重启Apache:</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo /etc/init.d/apache2 restart
+</code></pre></div></div>
+
+<h2 id="0x04-生成ssl证书的流程">0x04 生成SSL证书的流程</h2>
+<hr />
+
+<h3 id="1客户端生成一对公钥和私钥key文件">1、客户端生成一对公钥和私钥(.key文件)</h3>
+
+<h3 id="2客户端生成证书请求文件csr文件">2、客户端生成证书请求文件(.csr文件)</h3>
+
+<p>将csr文件发送给CA机构进行校验，若审核通过，CA机构使用自己的私钥对csr文件进行签名，生成证书文件(.crt文件),发给用户，用户使用该证书证明自己的身份</p>
+
+<p>生成方法：</p>
+
+<p>输入：</p>
+
+<ul>
+  <li>用户私钥</li>
+  <li>用户信息</li>
+</ul>
+
+<p>输出：</p>
+
+<p>csr文件，包括用户公钥和用户信息</p>
+
+<h3 id="3ca审核请求生成证书文件crt">3、CA审核请求，生成证书文件(.crt)</h3>
+
+<p>一般是将csr文件发送到证书签发机构CA进行校验，但是我们可以自己对其审核，生成一个自签名证书(可用于测试，无法保证可信)</p>
+
+<h2 id="0x05-使用openssl生成ssl证书">0x05 使用openssl生成SSL证书</h2>
+<hr />
+
+<p>Ubuntu安装openssl后可直接运行openssl</p>
+
+<p>Windows安装Apache后默认安装openssl，位于<code class="language-plaintext highlighter-rouge">\Apache24\bin</code></p>
+
+<h3 id="1常规方法">1、常规方法：</h3>
+
+<h4 id="1-生成2048位的加密私钥">(1) 生成2048位的加密私钥</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>openssl genrsa -out server.key 2048
+</code></pre></div></div>
+
+<h4 id="2-生成证书签名请求">(2) 生成证书签名请求</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>openssl req -new -key server.key -out server.csr
+</code></pre></div></div>
+
+<p>接着依次填入配置信息，<code class="language-plaintext highlighter-rouge">Common Name</code>项要同域名对应(测试域名为test.com)</p>
+
+<h4 id="3-生成自签名证书">(3) 生成自签名证书</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>openssl x509 -req -days 3650 -in server.csr -signkey server.key -out server.crt
+</code></pre></div></div>
+
+<h3 id="2快捷方法">2、快捷方法：</h3>
+
+<p>通过网站自动生成openssl配置参数，地址如下：</p>
+
+<p>https://myssl.com/csr_create.html</p>
+
+<p>填入配置信息后自动生成openssl参数，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-18/2-1.png" alt="Alt text" /></p>
+
+<p>参数如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>openssl req -new -SHA256 -newkey rsa:2048 -nodes -keyout test.com.key -out test.com.csr -subj "/C=CN/ST=Shanghai/L=Shanghai/O=11/OU=22/CN=test.com"
+</code></pre></div></div>
+
+<p>生成私钥文件test.com.key和证书签名请求test.com.csr</p>
+
+<p>接着生成自签名证书：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>openssl x509 -req -days 3650 -in test.com.csr -signkey test.com.key -out test.com.crt
+</code></pre></div></div>
+
+<p><strong>实际测试：</strong></p>
+
+<h4 id="1-修改apache服务器的ssl配置">(1) 修改apache服务器的ssl配置</h4>
+
+<p>SSLCertificateFile指向自签名证书(.crt文件)路径</p>
+
+<p>SSLCertificateKeyFile指向私钥文件(.key文件)路径</p>
+
+<p>重启apache服务</p>
+
+<h4 id="2-客户端修改hosts文件">(2) 客户端修改hosts文件：</h4>
+
+<p>apache服务器ip对应test.com</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-18/2-2.png" alt="Alt text" /></p>
+
+<h4 id="3-客户端将自签名证书安装到受信任的根证书颁发机构">(3) 客户端将自签名证书安装到<code class="language-plaintext highlighter-rouge">受信任的根证书颁发机构</code></h4>
+
+<p>安装后如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-18/2-3.png" alt="Alt text" /></p>
+
+<h4 id="4-客户端访问apache服务器">(4) 客户端访问Apache服务器</h4>
+
+<p>访问失败，提示<code class="language-plaintext highlighter-rouge">它的安全证书没有指定主题备用名称</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-18/2-4.png" alt="Alt text" /></p>
+
+<p>常规方法和快捷方法生成的证书均存在这个问题</p>
+
+<h3 id="3解决方法">3、解决方法</h3>
+
+<p>证书缺少主题备用名称SAN (Subject Alternate Name)，需要通过配置文件进行添加</p>
+
+<p>参考资料：</p>
+
+<p>https://support.citrix.com/article/CTX135602_</p>
+
+<p>新建文件req.cnf，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+[req_distinguished_name]
+C = US
+ST = VA
+L = SomeCity
+O = MyCompany
+OU = MyDivision
+CN = test.com
+[v3_req]
+keyUsage = critical, digitalSignature, keyAgreement
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = test.com
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>CN和DNS.1都需要设定为域名(测试域名为test.com)</p>
+
+<p>生成私钥和自签名证书：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout test.com.key -out test.com.crt -config req.cnf -sha256
+</code></pre></div></div>
+
+<p>修改apache服务器的ssl配置,指定新的私钥文件(test.com.key)和证书文件(test.com.crt)，重启apache服务</p>
+
+<p>客户端安装自签名证书文件test.com.crt</p>
+
+<p>访问Apache服务器，证书有效，一切正常，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-18/2-5.png" alt="Alt text" /></p>
+
+<p><strong>补充：</strong></p>
+
+<p>在未来，openssl有可能支持设置参数<code class="language-plaintext highlighter-rouge">DNS.1</code>，相关资料：</p>
+
+<p>https://github.com/openssl/openssl/pull/4986</p>
+
+<h2 id="0x06-规则配置实现https流量分发">0x06 规则配置实现https流量分发</h2>
+<hr />
+
+<h3 id="1开启双向认证">1、开启双向认证</h3>
+
+<p>服务器验证客户端证书，如果客户端证书有效，客户端才能正常访问网页，否则无法访问</p>
+
+<h4 id="1-windows系统">(1) Windows系统</h4>
+
+<p><strong>1.生成客户端证书</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>openssl req -new -SHA256 -newkey rsa:2048 -nodes -keyout user.key -out user.csr -subj "/C=CN/ST=Shanghai/L=Shanghai/O=11/OU=22/CN=user"
+openssl x509 -req -days 365 -in user.csr -signkey user.key -out user.crt
+openssl pkcs12 -export -cacerts -inkey user.key -in user.crt -out user.p12
+</code></pre></div></div>
+
+<p><strong>2.服务器编辑文件<code class="language-plaintext highlighter-rouge">\Apache24\conf\extra\httpd-ssl.conf</code></strong></p>
+
+<p>添加客户端证书的路径，指向user.crt</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SSLEngine on
+SSLCertificateFile "${SRVROOT}/conf/test.com.crt"
+SSLCertificateKeyFile "${SRVROOT}/conf/test.com.key"
+SSLCACertificateFile "${SRVROOT}/conf/user.crt"
+</code></pre></div></div>
+
+<p>开启客户端认证：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SSLVerifyClient require  
+SSLVerifyDepth  10 
+</code></pre></div></div>
+
+<p><strong>3.重启Apache</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>httpd.exe -k restart
+</code></pre></div></div>
+
+<p><strong>4.客户端安装证书user.p12</strong></p>
+
+<p>访问网页时弹框提示，确认证书后正常访问，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-18/3-1.png" alt="Alt text" /></p>
+
+<h4 id="2-ubuntu系统">(2) Ubuntu系统</h4>
+
+<p><strong>1.生成客户端证书</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>openssl req -new -SHA256 -newkey rsa:2048 -nodes -keyout user.key -out user.csr -subj "/C=CN/ST=Shanghai/L=Shanghai/O=11/OU=22/CN=user"
+openssl x509 -req -days 365 -in user.csr -signkey user.key -out user.crt
+openssl pkcs12 -export -cacerts -inkey user.key -in user.crt -out user.p12
+</code></pre></div></div>
+
+<p><strong>2.服务器编辑文件<code class="language-plaintext highlighter-rouge">/etc/apache2/sites-enabled/default-ssl.conf</code></strong></p>
+
+<p>指定私钥文件、签名证书和客户端证书的路径</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SSLEngine on
+SSLCertificateFile /etc/apache2/ssl/test.com.crt
+SSLCertificateKeyFile /etc/apache2/ssl/test.com.key
+SSLCACertificateKeyFile /etc/apache2/ssl/user.crt
+</code></pre></div></div>
+
+<p>开启客户端认证：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SSLVerifyClient require  
+SSLVerifyDepth  10 
+</code></pre></div></div>
+
+<p><strong>3.重启Apache</strong></p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo /etc/init.d/apache2 restart
+</code></pre></div></div>
+
+<p><strong>4.客户端安装证书user.p12</strong></p>
+
+<p>正常访问</p>
+
+<h3 id="2流量转发">2、流量转发</h3>
+
+<p>配置方法参照上篇文章，本文不再赘述</p>
+
+<p>最终能实现对Https的流量进行判断，如果证书有效，转发到真实服务器</p>
+
+<p>如果证书无效，可选择转发到Cover Server或是不提供服务</p>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文介绍了Windows系统和Ubuntu系统下配置Apache https的方法，分享SSL证书生成方法和配置过程，在技术研究的角度实现了对Https的流量判断，根据条件进行https流量的分发。</p>
+
+<p>至此，成功实现Hive的流量分发功能。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

@@ -1,0 +1,154 @@
+I"�<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Orange在今年的BlackHat演讲中介绍了在Pwn2Own 2021上使用的Microsoft Exchange攻击链，他分享的<a href="https://i.blackhat.com/USA21/Wednesday-Handouts/us-21-ProxyLogon-Is-Just-The-Tip-Of-The-Iceberg-A-New-Attack-Surface-On-Microsoft-Exchange-Server.pdf">内容</a>给了我很大的启发。</p>
+
+<p>本文仅在技术研究的角度记录我在研究ProxyShell中的细节，分析利用思路。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>调试环境搭建</li>
+  <li>漏洞分析</li>
+  <li>利用思路</li>
+</ul>
+
+<h2 id="0x02-调试环境搭建">0x02 调试环境搭建</h2>
+<hr />
+
+<h3 id="1禁用visual-studio中的调试优化">1.禁用Visual Studio中的调试优化</h3>
+
+<p>设置环境变量<code class="language-plaintext highlighter-rouge">COMPLUS_ZapDisable=1</code></p>
+
+<p>重启系统</p>
+
+<h3 id="2查看exchange中对应的进程">2.查看Exchange中对应的进程</h3>
+
+<p>执行命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\System32\inetsrv\appcmd list wp
+</code></pre></div></div>
+
+<p>可以获得Exchange的所有进程和对应的pid，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-8-12/2-1.png" alt="Alt text" /></p>
+
+<h3 id="3使用dnspy进行调试">3.使用<a href="https://github.com/dnSpy/dnSpy">dnSpy</a>进行调试</h3>
+
+<p>打开相关的dll文件并在待调试的位置下断点，选择附加进程开始调试</p>
+
+<p>如果不确定待调试的Exchange进程，可以选择所有w3wp.exe</p>
+
+<h2 id="0x03-漏洞调试">0x03 漏洞调试</h2>
+<hr />
+
+<p>使用dnSpy打开文件<code class="language-plaintext highlighter-rouge">C:\Program Files\Microsoft\Exchange Server\V15\FrontEnd\HttpProxy\bin\Microsoft.Exchange.FrontEndHttpProxy.dll</code></p>
+
+<p>依次定位到<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.Clients.Owa.Core</code> -&gt; <code class="language-plaintext highlighter-rouge">Microsoft.Exchange.HttpProxy</code></p>
+
+<p>关于SSRF漏洞(CVE-2021-34473)的漏洞原理可以参考如下文章：</p>
+
+<p>https://peterjson.medium.com/reproducing-the-proxyshell-pwn2own-exploit-49743a4ea9a1</p>
+
+<h2 id="0x04-漏洞分析">0x04 漏洞分析</h2>
+<hr />
+
+<h3 id="1判断漏洞是否存在">1.判断漏洞是否存在</h3>
+
+<p>这里使用Orange原文给出的方法：</p>
+
+<p>访问：https://<exchange url="">/autodiscover/autodiscover.json?@foo.com/mapi/nspi/?&amp;Email=autodiscover/autodiscover.json%3f@foo.com</exchange></p>
+
+<p>如果漏洞存在，返回如下结果：</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-8-12/2-2.png" alt="Alt text" /></p>
+
+<p>权限为System</p>
+
+<p>url地址中的”/mapi/nspi”为Exchange服务器访问的最终地址</p>
+
+<p>url地址中的”?&amp;Email=autodiscover/autodiscover.json%3f@foo.com”作为参数，这是为了满足漏洞触发的条件。此处还可以通过设置Cookie的内容为”Email=Autodiscover/autodiscover.json%3f@foo.com”实现相同的效果，源码如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-8-12/2-3.png" alt="Alt text" /></p>
+
+<h3 id="2通过ssrf漏洞调用exchange-web-serviceews">2.通过SSRF漏洞调用Exchange Web Service(EWS)</h3>
+
+<p>Exchange Web Service(EWS)对应邮箱用户的邮件内容，关于EWS的使用可以参考之前的文章<a href="https://3gstudent.github.io/Exchange-Web-Service(EWS)%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%972-SOAP-XML-message">《Exchange Web Service(EWS)开发指南2——SOAP XML message》</a>，通过发送XML请求，能够获得对应用户的邮件内容</p>
+
+<p>由于SSRF默认的权限为System，所以我们需要找到能够模拟任意邮箱用户的方法，才能够读取对应用户的邮件内容</p>
+
+<p>经过一段时间的调试，我没有找到通过参数指定EWS认证用户的方法，但是这里我们可以使用Exchange提权漏洞(CVE-2018-8581)中的技巧，通过在Header中使用SerializedSecurityContext，指定SID可以实现身份伪装，从而以指定用户身份进行EWS调用操作</p>
+
+<p>代码地址：</p>
+
+<p>https://github.com/thezdi/PoC/blob/master/CVE-2018-8581/serverHTTP_relayNTLM.py#L48-L64</p>
+
+<p>Header格式如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>    &lt;soap:Header&gt;
+     &lt;t:RequestServerVersion Version="Exchange2016" /&gt;
+     
+&lt;m:SerializedSecurityContext&gt;
+&lt;m:UserSid&gt;'''+VICTIM_SID+'''&lt;/m:UserSid&gt;
+&lt;m:GroupSids&gt;
+   &lt;m:GroupIdentifier&gt;
+     &lt;t:SecurityIdentifier&gt;'''+VICTIM_SID+'''&lt;/t:SecurityIdentifier&gt;
+   &lt;/m:GroupIdentifier&gt;
+&lt;/m:GroupSids&gt;
+   
+&lt;RestrictedGroupSids&gt;
+&lt;RestrictedGroupIdentifier&gt; &lt;/RestrictedGroupIdentifier&gt;
+&lt;/RestrictedGroupSids&gt;
+&lt;/m:SerializedSecurityContext&gt;
+ 
+&lt;/soap:Header&gt; 
+</code></pre></div></div>
+
+<p>为了获得用户的SID，我们可以使用Exchange SSRF漏洞(CVE-2021-26855)中的技巧，通过访问/autodiscover/autodiscover.xml获得legacyDn，作为参数继续访问/mapi/emsmdb，就能够获得用户对应的sid</p>
+
+<p>至此，整个利用链完成，流程如下：</p>
+
+<p>1.访问/autodiscover/autodiscover.xml获得legacyDn
+2.访问/mapi/emsmdb获得用户对应的sid
+3.在Header中使用SerializedSecurityContext，指定用户身份进行EWS调用操作</p>
+
+<h3 id="3枚举邮箱用户列表">3.枚举邮箱用户列表</h3>
+
+<p>我在之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E8%8E%B7%E5%BE%97Exchange-GlobalAddressList%E7%9A%84%E6%96%B9%E6%B3%95">《渗透技巧——获得Exchange GlobalAddressList的方法》</a>提到过：“Exchange GlobalAddressList(全局地址列表)包含Exchange组织中所有邮箱用户的邮件地址，只要获得Exchange组织内任一邮箱用户的凭据，就能够通过GlobalAddressList导出其他邮箱用户的邮件地址。”</p>
+
+<p>这里也是可以进行利用的，我们只需要使用<a href="https://docs.microsoft.com/en-us/exchange/client-developer/web-service-reference/findpeople-operation?redirectedfrom=MSDN">FindPeople</a>操作，做一个遍历并进行结果去重即可</p>
+
+<p>实现细节可以参考之前开源的脚本：https://github.com/3gstudent/Homework-of-Python/blob/master/ewsManage.py</p>
+
+<h3 id="4默认邮箱用户">4.默认邮箱用户</h3>
+
+<p>为了读取Exchange GlobalAddressList(全局地址列表)，我们需要获得Exchange组织内任一邮箱用户的凭据，对应到这个漏洞，我们仅仅需要邮箱用户名称</p>
+
+<p>Exchange中默认存在以下四个用户可供使用：</p>
+
+<ul>
+  <li>SystemMailbox{bb558c35-97f1-4cb9-8ff7-d53741dc928c}</li>
+  <li>SystemMailbox{e0dc1c29-89c3-4034-b678-e6c29d823ed9}</li>
+  <li>SystemMailbox{D0E409A0-AF9B-4720-92FE-AAC869B0D201}(Exchange 2016 CU8 and later)</li>
+  <li>SystemMailbox{2CE34405-31BE-455D-89D7-A7C7DA7A0DAA}(Exchange 2016 CU8 and later)</li>
+</ul>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/architecture/mailbox-servers/recreate-arbitration-mailboxes?view=exchserver-2019</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>CVE-2021-34473作为ProxyShell攻击链的基础，验证简单，危害巨大。站在防御的角度，建议用户尽快更新补丁。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

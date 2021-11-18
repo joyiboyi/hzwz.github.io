@@ -1,0 +1,183 @@
+I"�'<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>本文将要介绍ProxyShell中第二个漏洞的细节，分析利用思路。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>CommonAccessToken</li>
+  <li>Exchange PowerShell Remoting</li>
+  <li>利用分析</li>
+</ul>
+
+<h2 id="0x02-commonaccesstoken">0x02 CommonAccessToken</h2>
+<hr />
+
+<p>在上篇文章《ProxyShell利用分析1——CVE-2021-34473》提到，我没有找到通过参数指定EWS认证用户的方法，但是对于Exchange PowerShell Remoting，可以通过传入CommonAccessToken指定认证用户，访问Exchange PowerShell Remoting</p>
+
+<h3 id="1定位参数传入方法">1.定位参数传入方法</h3>
+
+<p>使用dnsSpy打开文件<code class="language-plaintext highlighter-rouge">C:\Program Files\Microsoft\Exchange Server\V15\Bin\Microsoft.Exchange.Configuration.RemotePowershellBackendCmdletProxyModule.dll</code></p>
+
+<p>依次定位到<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.Configuration.RemotePowershellBackendCmdletProxy</code> -&gt; <code class="language-plaintext highlighter-rouge">RemotePowershellBackendCmdletProxyModule</code> -&gt; <code class="language-plaintext highlighter-rouge">CommonAccessToken CommonAccessTokenFromUrl(string user, Uri requestURI, out Exception ex)</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-8-13/2-1.png" alt="Alt text" /></p>
+
+<p>可以看到，通过X-Rps-CAT作为参数传入CommonAccessToken</p>
+
+<p>传递参数的方式可以参考下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-8-13/2-2.png" alt="Alt text" /></p>
+
+<h3 id="2commonaccesstoken的生成">2.CommonAccessToken的生成</h3>
+
+<p>使用dnsSpy打开文件<code class="language-plaintext highlighter-rouge">C:\Program Files\Microsoft\Exchange Server\V15\Bin\Microsoft.Exchange.Net.dll</code></p>
+
+<p>依次定位到<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.Security.Authorization</code> -&gt; <code class="language-plaintext highlighter-rouge">CommonAccessToken</code> -&gt; <code class="language-plaintext highlighter-rouge">Deserialize(Stream stream)</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-8-13/2-3.png" alt="Alt text" /></p>
+
+<p>在起始位置下断点</p>
+
+<p>执行命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\System32\inetsrv\appcmd list wp
+</code></pre></div></div>
+
+<p>找到applicationPool:MSExchangePowerShellAppPool对应的进程pid</p>
+
+<p>附加到该进程上，等待一段时间，能够捕获到正确的格式</p>
+
+<p>此时，选中Locals中的binaryReader，依次按鼠标右键 -&gt; 选择Show in Memory Window -&gt; Memory 1，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-8-13/2-4.png" alt="Alt text" /></p>
+
+<p>查看该内存区域附近的内容，捕获到了正确的格式，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-8-13/2-5.png" alt="Alt text" /></p>
+
+<p>经过分析，捕获的内容结构如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>V + 版本(\x01\x00) + T + 类型长度(\x07) + 类型(Windows) + C + \x00 + A + 认证类型长度(\x08) + 认证类型(kerberos) + L + 用户名长度 + 用户名 + U + sid长度 + sid + G + 组个数(4字节，little endian，\x06\x00\x00\x00) + 分隔符\x07\x00\x00\x00 + 组1长度 + 组1 + 分隔符\x07\x00\x00\x00 + 组2长度 + 组2 + 分隔符\x07\x00\x00\x00 + 组3长度 + 组3 + 分隔符\x07\x00\x00\x00 + 组4长度 + 组4 + 分隔符\x07\x00\x00\x00 + 组5长度 + 组5 + 分隔符\x07\x00\x00\x00 + 组6长度 + 组6 + E + \x00\x00\x00\x00
+</code></pre></div></div>
+
+<p>对于认证类型长度，长度为1字节，字节序为little endian，内容为认证类型的字符串长度，例如认证类型为basic，那么认证类型长度为\x05</p>
+
+<p>在Python代码实现上，计算认证类型长度可以使用如下代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>authtype = "kerberos"
+authlen = (len(authtype)).to_bytes(1, 'little')
+</code></pre></div></div>
+
+<p>经过实际测试，构造CommonAccessToken时，有以下技巧：</p>
+
+<ul>
+  <li>用户名只要是合法用户即可，可以使用默认邮箱</li>
+  <li>sid为关键内容，代表认证用户的权限，如果需要认证为管理员用户Administrator，这里的格式为S-1-5-domain-500</li>
+  <li>如果域环境禁用了管理员用户administrator，仍然能够认证成功</li>
+  <li>group sid只要是可用的即可，例如随便指定一个S-1-1-0</li>
+</ul>
+
+<p>关于sid的格式可以参考：</p>
+
+<p>https://docs.microsoft.com/en-US/windows/security/identity-protection/access-control/security-identifiers</p>
+
+<h3 id="3commonaccesstoken的验证">3.CommonAccessToken的验证</h3>
+
+<p>在以正确的方式传入参数X-Rps-CAT，如果CommonAccessToken也有效，那么在访问/Powershell时会返回状态码200</p>
+
+<h2 id="0x03-exchange-powershell-remoting">0x03 Exchange PowerShell Remoting</h2>
+<hr />
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/powershell/module/exchange/?view=exchange-ps</p>
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E5%9F%BA%E7%A1%80-%E4%BB%8EExchange%E6%9C%8D%E5%8A%A1%E5%99%A8%E4%B8%8A%E6%90%9C%E7%B4%A2%E5%92%8C%E5%AF%BC%E5%87%BA%E9%82%AE%E4%BB%B6">《渗透基础——从Exchange服务器上搜索和导出邮件》</a>介绍过Exchange PowerShell Remoting的相关用法，这里做一些补充</p>
+
+<h3 id="1默认设置下所有域用户都可以连接remote-powershell">1.默认设置下，所有域用户都可以连接remote PowerShell</h3>
+
+<p>常用命令：</p>
+
+<p>查看用户是否具有访问remote PowerShell的权限：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-User -Identity &lt;UserIdentity&gt; | Format-List RemotePowerShellEnabled
+</code></pre></div></div>
+
+<p>列出所有用户是否具有访问remote PowerShell的权限：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-User -ResultSize unlimited | Format-Table -Auto Name,DisplayName,RemotePowerShellEnabled
+</code></pre></div></div>
+
+<p>列出具有访问remote PowerShell权限的用户：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-User -ResultSize unlimited -Filter 'RemotePowerShellEnabled -eq $true'
+</code></pre></div></div>
+
+<p>删除指定用户的remote PowerShell访问权限：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Set-User -Identity &lt;UserIdentity&gt; -RemotePowerShellEnabled $false
+</code></pre></div></div>
+
+<p>开启指定用户的remote PowerShell访问权限：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Set-User -Identity &lt;UserIdentity&gt; -RemotePowerShellEnabled $true
+</code></pre></div></div>
+
+<p>如果想要执行管理Exchange服务器的命令，用户需要成为<code class="language-plaintext highlighter-rouge">Organization Management</code>组的成员</p>
+
+<p>查看<code class="language-plaintext highlighter-rouge">Organization Management</code>组成员的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-RoleGroupMember "Organization Management"
+</code></pre></div></div>
+
+<h3 id="2连接remote-powershell的内置方法">2.连接remote PowerShell的内置方法</h3>
+
+<p>Powershell示例命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$User = "test\user1"
+$Pass = ConvertTo-SecureString -AsPlainText Password1 -Force
+$Credential = New-Object System.Management.Automation.PSCredential -ArgumentList $User,$Pass
+$Session = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri http://exchangeserver.test.com/PowerShell/ -Authentication Kerberos -Credential $Credential
+Import-PSSession $Session -AllowClobber
+Get-RoleGroupMember "Organization Management"
+Remove-PSSession $Session
+</code></pre></div></div>
+
+<p>该方法默认只能从域内主机发起连接，不支持从域外连接</p>
+
+<h2 id="0x04-利用分析">0x04 利用分析</h2>
+<hr />
+
+<h3 id="1commonaccesstoken的格式">1.CommonAccessToken的格式</h3>
+
+<p>用户sid需要设置成Administrator，默认为<code class="language-plaintext highlighter-rouge">S-1-5-domain-500</code></p>
+
+<p>这里可以选择其他用户的sid，但需要满足用户位于”Organization Management”组中</p>
+
+<h3 id="2使用pypsrp连接remote-powershell的一个问题">2.使用<a href="https://github.com/jborean93/pypsrp">PyPSRP</a>连接remote PowerShell的一个问题</h3>
+
+<p>使用<a href="https://github.com/jborean93/pypsrp">PyPSRP</a>执行Powershell命令时，无法执行添加用户的操作</p>
+
+<p>这是因为传递Password的值时需要执行Powershell命令<code class="language-plaintext highlighter-rouge">convertto-securestring</code>，而<code class="language-plaintext highlighter-rouge">convertto-securestring</code>不是Exchange PowerShell Remoting支持的命令</p>
+
+<p>如果选择执行Powershell脚本，由于默认Powershell策略的限制，会提示无法执行Powershell脚本</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>对于ProxyShell中的第二个漏洞CVE-2021-34523，结合利用思路，不难猜出最简单粗暴的防御方法：将”Organization Management”组内的用户清空，就可以防止攻击者执行高权限的Exchange Powershell命令</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

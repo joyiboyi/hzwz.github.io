@@ -1,0 +1,355 @@
+I"5:<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Confluence是一个专业的企业知识管理与协同软件，也可以用于构建企业wiki。</p>
+
+<p>前不久爆出了漏洞<a href="https://confluence.atlassian.com/doc/confluence-security-advisory-2021-08-25-1077906215.html">CVE-2021-26084 - Confluence Server Webwork OGNL injection</a>，本文仅在技术研究的角度介绍Confluence的相关知识。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<ul>
+  <li>Confluence环境搭建</li>
+  <li>利用思路</li>
+</ul>
+
+<h2 id="0x02-confluence环境搭建">0x02 Confluence环境搭建</h2>
+<hr />
+
+<p>环境搭建的参考资料：</p>
+
+<p>Windows:</p>
+
+<p>https://confluence.atlassian.com/doc/installing-confluence-on-windows-255362047.html</p>
+
+<p>Linux:</p>
+
+<p>https://confluence.atlassian.com/doc/installing-confluence-on-linux-143556824.html</p>
+
+<p>本文以Centos7搭建Confluence为例进行介绍</p>
+
+<h3 id="1配置数据库">1.配置数据库</h3>
+
+<p>这里选择PostgreSQL，安装的参考资料：</p>
+
+<p>https://confluence.atlassian.com/doc/database-setup-for-postgresql-173244522.html</p>
+
+<h4 id="1安装postgresql">(1)安装PostgreSQL</h4>
+
+<p>访问地址：https://www.postgresql.org/download/linux/redhat/</p>
+
+<p>获得安装命令，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/1-1.png" alt="Alt text" /></p>
+
+<p>安装完成后查看运行状态：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>systemctl status postgresql-13
+</code></pre></div></div>
+
+<h4 id="2配置postgresql">(2)配置PostgreSQL</h4>
+
+<p>设置允许其他程序访问数据库：</p>
+
+<p>修改<code class="language-plaintext highlighter-rouge">/var/lib/pgsql/13/data/pg_hba.conf</code></p>
+
+<p>将<code class="language-plaintext highlighter-rouge">METHOD</code>改为<code class="language-plaintext highlighter-rouge">trust</code>，设置如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/1-3.png" alt="Alt text" /></p>
+
+<p>重启PostgreSQL：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>systemctl restart postgresql-13
+</code></pre></div></div>
+
+<h4 id="补充配置允许其他ip访问数据库">补充：配置允许其他IP访问数据库</h4>
+
+<p>修改<code class="language-plaintext highlighter-rouge">/var/lib/pgsql/13/data/pg_hba.conf</code></p>
+
+<p>将<code class="language-plaintext highlighter-rouge">ADDRESS</code>改为<code class="language-plaintext highlighter-rouge">0.0.0.0/0</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/1-4.png" alt="Alt text" /></p>
+
+<p>修改<code class="language-plaintext highlighter-rouge">/var/lib/pgsql/13/data/postgresql.conf</code></p>
+
+<p>设置<code class="language-plaintext highlighter-rouge">listen_addresses = '*'</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/1-5.png" alt="Alt text" /></p>
+
+<p>重启PostgreSQL：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>systemctl restart postgresql-13
+</code></pre></div></div>
+
+<h4 id="3数据库操作">(3)数据库操作</h4>
+
+<p>PostgreSQL安装完成后会在本地操作系统创建一个名为<code class="language-plaintext highlighter-rouge">postgres</code>的用户，默认没有口令</p>
+
+<p>切换到用户postgres：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>su postgres
+</code></pre></div></div>
+
+<p>进入postgreSQL：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>bash-4.2$ psql
+</code></pre></div></div>
+
+<p>设置用户postgres的口令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>postgres=# \password postgres
+</code></pre></div></div>
+
+<p>查看创建用户的命令说明：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>postgres-# \h create user
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/1-2.png" alt="Alt text" /></p>
+
+<p>创建用户confluence:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>postgres-# create user confluenceuser with password 'confluenceuser' createdb login;
+</code></pre></div></div>
+
+<p>参数说明：</p>
+
+<ul>
+  <li>createdb:具有创建数据库的权限</li>
+  <li>login:具有登录权限</li>
+</ul>
+
+<p>创建数据库confluence：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>postgres-# create database confluence with owner=confluenceuser encoding='UTF8';
+</code></pre></div></div>
+
+<p>参数说明：</p>
+
+<ul>
+  <li>encoding:指定encoding必须为utf8</li>
+</ul>
+
+<p>测试用户登录：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[user@localhost ~]$ psql -h localhost -p 5432 -d confluence -U confluenceuser
+</code></pre></div></div>
+
+<h3 id="2安装confluence">2.安装Confluence</h3>
+
+<p>下载地址：https://www.atlassian.com/software/confluence/download-archives</p>
+
+<p>选择一个版本7.11.3</p>
+
+<p>下载时选择<code class="language-plaintext highlighter-rouge">7.11.3 - Linux Installer (64 bit)</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/2-1.png" alt="Alt text" /></p>
+
+<p>执行安装命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[root@localhost ~]$ ./atlassian-confluence-7.11.3-x64.bin
+</code></pre></div></div>
+
+<p>在安装过程中，选择<code class="language-plaintext highlighter-rouge">Express Install (uses default settings) [1]</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/2-2.png" alt="Alt text" /></p>
+
+<p>安装结束后，使用浏览器访问http://localhost:8090</p>
+
+<p>在设置Confluence页面，需要填入license，可以通过访问https://my.atlassian.com/license/evaluation获得，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/2-3.png" alt="Alt text" /></p>
+
+<p>进入数据库设置页面，配置如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/2-4.png" alt="Alt text" /></p>
+
+<p>接下来，依次设置content、manage users和administrator account页面</p>
+
+<p>最后的成功页面如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/2-5.png" alt="Alt text" /></p>
+
+<p>访问登录页面：http://localhost:8090/welcome.action，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/2-6.png" alt="Alt text" /></p>
+
+<h3 id="3创建confluence普通用户">3.创建Confluence普通用户</h3>
+
+<p>使用管理员帐户登录后，选择<code class="language-plaintext highlighter-rouge">Use management</code>进行用户配置，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/3-1.png" alt="Alt text" /></p>
+
+<p>添加用户test1，配置如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/3-2.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>管理员帐户对应以下两个组：</p>
+
+<ul>
+  <li>confluence-administrators</li>
+  <li>confluence-users</li>
+</ul>
+
+<p>添加用户后，可访问http://localhost:8090/进行登录</p>
+
+<h2 id="0x03-基础知识">0x03 基础知识</h2>
+<hr />
+
+<h3 id="1文件目录">1.文件目录</h3>
+
+<p>参考资料：</p>
+
+<p>https://www.cwiki.us/display/CONF6ZH/Confluence+Home+and+other+important+directories</p>
+
+<h4 id="1confluence-installation">(1)<code class="language-plaintext highlighter-rouge">&lt;confluence-installation&gt;</code></h4>
+
+<p>安装目录，用于存储系统文件</p>
+
+<p>默认安装位置：</p>
+
+<ul>
+  <li>Windows: <code class="language-plaintext highlighter-rouge">C:/Program Files/Atlassian/Confluence/</code></li>
+  <li>Linux: <code class="language-plaintext highlighter-rouge">/opt/atlassian/confluence/</code></li>
+</ul>
+
+<h4 id="2confluence-home">(2)<code class="language-plaintext highlighter-rouge">&lt;confluence-home&gt;</code></h4>
+
+<p>数据目录，用于存储数据</p>
+
+<p>默认安装位置：</p>
+
+<ul>
+  <li>Windows: <code class="language-plaintext highlighter-rouge">C:/Program Files/Atlassian/Application Data/Confluence/</code></li>
+  <li>Linux: <code class="language-plaintext highlighter-rouge">/var/atlassian/application-data/confluence/</code></li>
+</ul>
+
+<p>二者之间的联系：</p>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;confluence-installation&gt;/confluence/WEB-INF/classes/confluence-init.properties</code>文件中定义了<code class="language-plaintext highlighter-rouge">&lt;confluence-home&gt;</code>的位置</p>
+
+<h3 id="2数据库信息">2.数据库信息</h3>
+
+<p>存储数据库配置信息的位置： <code class="language-plaintext highlighter-rouge">&lt;confluence-home&gt;/confluence.cfg.xml</code></p>
+
+<h3 id="3用户信息">3.用户信息</h3>
+
+<p>用户信息位于Confluence的数据库中</p>
+
+<p>存储用户信息的表：<code class="language-plaintext highlighter-rouge">CWD_USER</code>，具体列名称如下：</p>
+<ul>
+  <li>user_name:用户名</li>
+  <li>active:是否启用</li>
+  <li>email_address:邮件地址</li>
+  <li>credential:用户凭据</li>
+  <li>directory_id:用户组，代表用户的权限</li>
+</ul>
+
+<p>directory_id对应的具体用户组名称可通过以下方式查看：</p>
+<ul>
+  <li>查询表cwd_group中的<code class="language-plaintext highlighter-rouge">group_name</code>列，管理员用户组的值为<code class="language-plaintext highlighter-rouge">confluence-administrators</code></li>
+  <li>查询表cwd_directory中的<code class="language-plaintext highlighter-rouge">directory_name</code>列，管理员用户组的值为<code class="language-plaintext highlighter-rouge">Confluence Internal Directory</code></li>
+</ul>
+
+<p>直接筛选出管理员用户的SQL命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>confluence=&gt; select u.id,u.user_name,u.active,u.credential from cwd_user u  join cwd_membership m on u.id=m.child_user_id join cwd_group g on m.parent_id=g.id join cwd_directory d on d.id=g.directory_id where g.group_name = 'confluence-administrators' and d.directory_name='Confluence Internal Directory';
+</code></pre></div></div>
+
+<p>执行结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/5-1.png" alt="Alt text" /></p>
+
+<h3 id="4日志文件位置">4.日志文件位置</h3>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;confluence-home&gt;/logs/</code></p>
+
+<h3 id="5web路径">5.Web路径</h3>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;confluence-installation&gt;/confluence/</code></p>
+
+<p>Windows: Confluence默认权限为network service，具有写权限</p>
+
+<p>Linux： Confluence默认权限为confluence，没有写权限</p>
+
+<h2 id="0x04-利用思路">0x04 利用思路</h2>
+<hr />
+
+<h3 id="1修改数据库实现用户登录">1.修改数据库，实现用户登录</h3>
+
+<h4 id="1修改用户登录口令">(1)修改用户登录口令</h4>
+
+<p>利用实例：</p>
+
+<p>查看用户关键信息，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>confluence=&gt; select id,user_name,credential from cwd_user;
+</code></pre></div></div>
+
+<p>执行结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/4-1.png" alt="Alt text" /></p>
+
+<p>修改用户test2的口令信息，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>confluence=&gt; UPDATE cwd_user SET credential= '{PKCS5S2}UokaJs5wj02LBUJABpGmkxvCX0q+IbTdaUfxy1M9tVOeI38j95MRrVxWjNCu6gsm' WHERE id = 458755;
+</code></pre></div></div>
+
+<p>确认数据库被修改，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2021-9-2/4-2.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">{PKCS5S2}UokaJs5wj02LBUJABpGmkxvCX0q+IbTdaUfxy1M9tVOeI38j95MRrVxWjNCu6gsm</code>对应的明文为123456</p>
+
+<h4 id="2修改personal-access-tokens">(2)修改Personal Access Tokens</h4>
+
+<p>使用<code class="language-plaintext highlighter-rouge">Personal Access Tokens</code>可以实现免密登录</p>
+
+<p>介绍资料：</p>
+
+<p>https://confluence.atlassian.com/bitbucketserver0610/personal-access-tokens-989761177.html
+https://developer.atlassian.com/server/confluence/confluence-server-rest-api/
+https://docs.atlassian.com/ConfluenceServer/rest/7.11.6/</p>
+
+<p>利用实例：</p>
+
+<p>测试环境下，<code class="language-plaintext highlighter-rouge">Personal Access Tokens</code>对应表为<code class="language-plaintext highlighter-rouge">AO_81F455_PERSONAL_TOKEN</code></p>
+
+<p>查询语句：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>confluence=&gt; select * from "AO_81F455_PERSONAL_TOKEN";
+</code></pre></div></div>
+
+<p>修改Personal Access Tokens，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>confluence=&gt; UPDATE "AO_81F455_PERSONAL_TOKEN" SET "HASHED_TOKEN"= '{PKCS5S2}Deoq/psifhVO0VE8qhJ6prfgOltOdJkeRH4cIxac9NtoXVodRQJciR95GW37gR7/' WHERE "ID" = 4;
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p><code class="language-plaintext highlighter-rouge">{PKCS5S2}Deoq/psifhVO0VE8qhJ6prfgOltOdJkeRH4cIxac9NtoXVodRQJciR95GW37gR7/</code>对应的token为<code class="language-plaintext highlighter-rouge">MjE0NTg4NjQ3MTk2OrQ5JtSJgT/rrRBmCY4zu+N+NaWZ</code></p>
+
+<h3 id="2写文件">2.写文件</h3>
+
+<p>Web路径：<code class="language-plaintext highlighter-rouge">&lt;confluence-installation&gt;/confluence/</code></p>
+
+<p>Windows: Confluence默认权限为network service，具有写权限</p>
+
+<p>Linux： Confluence默认权限为confluence，没有写权限，但可以尝试内存马</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了Confluence在利用上的相关基础知识。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

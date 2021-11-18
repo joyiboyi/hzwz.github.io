@@ -1,0 +1,237 @@
+I"%<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>SSH是一种网络协议，用于计算机之间的加密登录，通常用于远程登录Linux系统。</p>
+
+<p>在渗透测试中，通常需要考虑SSH的口令爆破和日志删除。</p>
+
+<p>本文将要介绍一些渗透测试相关的基础内容，结合利用方法给出检测建议。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>程序实现SSH口令验证</li>
+  <li>SSH日志的删除</li>
+  <li>SSH日志的绕过</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-程序实现ssh口令验证">0x02 程序实现SSH口令验证</h2>
+<hr />
+
+<h3 id="1python实现">1.Python实现</h3>
+
+<p>使用第三方库paramiko库，用法很简单</p>
+
+<p>我的代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/sshCheck.py</p>
+
+<p>代码支持口令登录和证书文件登录</p>
+
+<h3 id="2c实现">2.C#实现</h3>
+
+<p>使用第三方库SSH.NET，地址如下：</p>
+
+<p>https://github.com/sshnet/SSH.NET</p>
+
+<p>编译好的dll下载地址：</p>
+
+<p>https://github.com/sshnet/SSH.NET/releases/download/2016.1.0/SSH.NET-2016.1.0-bin.zip</p>
+
+<p>参考文档：</p>
+
+<p>https://github.com/sshnet/SSH.NET/releases/download/2016.1.0/SSH.NET-2016.1.0-help.chm</p>
+
+<p>在程序中引入Renci.SshNet.dll后，用法也十分简单</p>
+
+<p>在编写程序上需要注意以下问题：</p>
+
+<h4 id="1使用证书登录">(1)使用证书登录</h4>
+
+<p>SSH.NET对证书的格式有要求，<a href="https://github.com/sshnet/SSH.NET/releases/download/2016.1.0/SSH.NET-2016.1.0-help.chm">SSH.NET-2016.1.0-help.chm</a>上提示必须为<code class="language-plaintext highlighter-rouge">BEGIN RSA PRIVATE KEY</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-6-1/2-1.png" alt="Alt text" /></p>
+
+<p>而使用命令<code class="language-plaintext highlighter-rouge">ssh-keygen -t rsa</code>时，默认是以新的格式生成密钥文件，格式为<code class="language-plaintext highlighter-rouge">BEGIN OPENSSH PRIVATE KEY</code>，这里需要做一个转换</p>
+
+<p>解决方法：</p>
+
+<p>使用puttygen转换，下载地址：</p>
+
+<p>https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html</p>
+
+<p>选择<code class="language-plaintext highlighter-rouge">Load</code>导入密钥</p>
+
+<p>导出方法：</p>
+
+<p><code class="language-plaintext highlighter-rouge">Conversions</code>-&gt;<code class="language-plaintext highlighter-rouge">Export OpenSSH key</code></p>
+
+<p>所以在编写程序上需要先读取证书的文件内容，判断格式是否正确</p>
+
+<p>我的代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpSSHCheck_SSH.NET.cs</p>
+
+<p>代码需要对应.NET版本的Renci.SshNet.dll，可使用csc.exe进行编译，命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe SharpSSHCheck_SSH.NET.cs /r:Renci.SshNet.dll
+</code></pre></div></div>
+
+<p>代码支持口令登录和证书文件登录</p>
+
+<h2 id="0x03-ssh日志的删除">0x03 SSH日志的删除</h2>
+<hr />
+
+<p>同SSH登录操作相关的日志有以下几个位置：</p>
+
+<ul>
+  <li>/var/log/btmp，记录错误的登录尝试，查询命令：lastb</li>
+  <li>/var/log/auth.log，记录认证成功的用户</li>
+  <li>/var/log/secure，记录与安全相关的日志信息</li>
+  <li>/var/log/lastlog，记录用户上次登录信息</li>
+  <li>/var/log/wtmp，记录当前和曾经登入系统的用户信息，查询命令：last</li>
+  <li>/var/run/utmp，记录当前正在登录系统的用户信息，查询命令：w</li>
+  <li>~/.bash_history，记录从最开始至上一次登录所执行过的命令，查询命令：history</li>
+</ul>
+
+<h3 id="1查看日志的内容">1.查看日志的内容</h3>
+
+<p>无法直接查看的需要使用<code class="language-plaintext highlighter-rouge">strings</code>命令</p>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>strings /var/log/wtmp
+</code></pre></div></div>
+
+<h3 id="2替换日志中的ip">2.替换日志中的IP</h3>
+
+<p>使用<code class="language-plaintext highlighter-rouge">sed</code>命令替换指定的IP</p>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>utmpdump /var/log/wtmp |sed "s/192.168.112.151/1.1.1.1/g" |utmpdump -r &gt;/tmp/wtmp11 &amp;&amp;\mv /tmp/wtmp11 /var/log/wtmp
+</code></pre></div></div>
+
+<p>将192.168.112.151修改为1.1.1.1</p>
+
+<h3 id="3删除日志中的指定行">3.删除日志中的指定行</h3>
+
+<p>使用<code class="language-plaintext highlighter-rouge">sed</code>命令删除指定行</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sed -i '/May 1 23:17:39/d' /var/log/auth.log
+</code></pre></div></div>
+
+<p>删除/var/log/auth.log中以”May 1 23:17:39”开头的行</p>
+
+<h3 id="4躲避管理员w查看">4.躲避管理员w查看</h3>
+
+<p>需要使用<a href="https://github.com/re4lity/logtamper">logtamper</a></p>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python logtamper.py -m 1 -u re4lity -i 192.168.0.188
+</code></pre></div></div>
+
+<p>通过修改文件<code class="language-plaintext highlighter-rouge">/var/run/utmp</code>实现</p>
+
+<h3 id="5清除指定ip的登录日志">5.清除指定ip的登录日志</h3>
+
+<p>需要使用<a href="https://github.com/re4lity/logtamper">logtamper</a></p>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python logtamper.py -m 2 -u re4lity -i 192.168.0.188
+</code></pre></div></div>
+
+<p>通过修改文件<code class="language-plaintext highlighter-rouge">/var/log/wtmp</code>实现</p>
+
+<h3 id="6修改上次登录时间地点">6.修改上次登录时间地点</h3>
+
+<p>需要使用<a href="https://github.com/re4lity/logtamper">logtamper</a></p>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python logtamper.py -m 3 -u re4lity -i 192.168.0.188 -t tty1 -d 2014:05:28:10:11:12
+</code></pre></div></div>
+
+<p>通过修改文件<code class="language-plaintext highlighter-rouge">/var/log/lastlog</code>实现</p>
+
+<h3 id="7清除当前会话使用的命令记录">7.清除当前会话使用的命令记录</h3>
+
+<p>在退出会话前执行：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>history -r
+</code></pre></div></div>
+
+<h2 id="0x04-ssh日志的绕过">0x04 SSH日志的绕过</h2>
+<hr />
+
+<p>如果我们使用SSH客户端(例如putty)进行登录，需要考虑日志清除，十分麻烦</p>
+
+<p>这里给出一种绕过各种日志记录的方法：使用sftp、rsyn、scp等协议进行登录(notty)</p>
+
+<p>这里给出两种实现方法：</p>
+
+<p>在0x02中介绍的两个SSH口令验证程序(python和c#)正是使用了notty</p>
+
+<p>我将口令验证程序加入了执行命令的功能，对应的代码地址如下：</p>
+
+<p>Python实现：https://github.com/3gstudent/Homework-of-Python/blob/master/sshRunCmd.py</p>
+
+<p>C#实现：https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpSSHRunCmd_SSH.NET.cs</p>
+
+<p>代码均支持执行单个命令和交互式shell</p>
+
+<p>分别选择交互式shell，执行以下命令获得连接类型：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ps -aux|grep sshd
+</code></pre></div></div>
+
+<p>此时的连接类型为notty，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-6-1/3-1.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>如果使用putty远程连接，此时的类型为pts/2，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-6-1/3-2.png" alt="Alt text" /></p>
+
+<p>经测试，使用notty，能够绕过以下日志：</p>
+
+<ul>
+  <li>/var/log/lastlog，记录用户上次登录信息</li>
+  <li>/var/log/wtmp，记录当前和曾经登入系统的用户信息，查询命令：last</li>
+  <li>/var/run/utmp，记录当前正在登录系统的用户信息，查询命令：w</li>
+  <li>~/.bash_history，记录从最开始至上一次登录所执行过的命令，查询命令：history</li>
+</ul>
+
+<h2 id="0x05-防御检测">0x05 防御检测</h2>
+<hr />
+
+<p>增强SSH守护程序，参考资料：</p>
+
+<p>https://www.putorius.net/how-to-secure-ssh-daemon.html</p>
+
+<p>notty连接的检测：</p>
+
+<ol>
+  <li>查看错误的登录尝试，查询命令：lastb，文件位置/var/log/btmp</li>
+  <li>查看认证成功的用户，文件位置/var/log/auth.log</li>
+  <li>查看tcp连接，查看命令：netstat -vatn</li>
+</ol>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了SSH在渗透测试中的基础知识(日志删除和日志绕过)，开源了4个实现代码(口令验证和命令执行)，结合利用方法给出检测建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

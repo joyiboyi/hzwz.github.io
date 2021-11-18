@@ -1,0 +1,263 @@
+I"�+<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Pass-the-Hash-with-Remote-Desktop(Restricted-Admin-mode)">《渗透技巧——Pass the Hash with Remote Desktop(Restricted Admin mode)》</a>介绍了特定条件下(Server需要开启Restricted Admin mode，Client需要支持Restricted Admin mode)Pass the Hash with Remote Desktop的方法，本文将要介绍更为通用的方法（通过NTLM hash登录RDP），分析原理，开源代码，记录细节。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>渗透测试中的需求</li>
+  <li>验证口令或者NTLM hash的实现方法</li>
+  <li>C实现代码</li>
+  <li>Python实现代码</li>
+  <li>C sharp实现代码</li>
+</ul>
+
+<h2 id="0x02-渗透测试中的需求">0x02 渗透测试中的需求</h2>
+<hr />
+
+<p>如果是开发远程桌面服务的客户端，可供选择的方法有很多，例如通过C#调用ActiveX组件AxMSTSCLib</p>
+
+<p>详细方法可参考：https://www.codeproject.com/Articles/43705/Remote-Desktop-using-C-NET</p>
+
+<p>但是在渗透测试中，我们有以下两个需求：</p>
+
+<h4 id="1验证口令或者hash">1.验证口令或者hash</h4>
+
+<p>需要满足以下条件：</p>
+
+<ul>
+  <li>可以在Windows和Linux系统上运行</li>
+  <li>登录方式支持明文口令和NTLM hash</li>
+  <li>命令行下使用</li>
+</ul>
+
+<h4 id="2远程登录">2.远程登录</h4>
+
+<ul>
+  <li>可以在Windows和Linux系统上运行</li>
+  <li>登录方式支持明文口令和NTLM hash</li>
+</ul>
+
+<h2 id="0x03-验证口令或者hash的实现方法">0x03 验证口令或者hash的实现方法</h2>
+<hr />
+
+<p>为了支持NTLM hash登录，需要对协议和加密方式有所了解</p>
+
+<p>关于RDP协议的参考资料：https://github.com/FreeRDP/FreeRDP/wiki/Reference-Documentation</p>
+
+<h3 id="1使用python实现rdp_checkpy">1.使用Python实现(rdp_check.py)</h3>
+
+<p>代码地址：https://github.com/SecureAuthCorp/impacket/blob/master/examples/rdp_check.py</p>
+
+<ul>
+  <li>可以在Windows和Linux系统上运行</li>
+  <li>登录方式支持明文口令和NTLM hash</li>
+  <li>命令行下使用</li>
+</ul>
+
+<p>脚本运行前需要安装Impacket</p>
+
+<p>安装方法：<code class="language-plaintext highlighter-rouge">pip install Impacket</code></p>
+
+<p>如果是在Windows系统下使用，可以将Python脚本转换成exe，编译好的exe文件下载地址：https://github.com/maaaaz/impacket-examples-windows</p>
+
+<p>使用示例：明文口令验证</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rdp_check.py /administrator:test123@192.168.1.1
+</code></pre></div></div>
+
+<p>使用示例：NTLM hash验证</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rdp_check.py /administrator@192.168.1.1 -hashes :c5a237b7e9d8e708d8436b6148a25fa1
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>hash的格式为<code class="language-plaintext highlighter-rouge">LMHASH:NTHASH</code>，如果只有NTLM hash，格式为<code class="language-plaintext highlighter-rouge"> :NTHASH</code>，需要注意<code class="language-plaintext highlighter-rouge">:</code>前面存在一个空格字符</p>
+
+<h3 id="2使用c实现freerdp">2.使用C实现(FreeRDP)</h3>
+
+<p>代码地址：https://github.com/FreeRDP</p>
+
+<ul>
+  <li>可以在Windows和Linux系统上运行</li>
+  <li>登录方式支持明文口令</li>
+  <li>命令行下使用</li>
+</ul>
+
+<p>如果为了支持NTLM hash登录，需要使用旧版本的FreeRDP，下载地址：https://labs.portcullis.co.uk/download/FreeRDP-pth.tar.gz</p>
+
+<p>如果仅仅为了验证口令或者hash，需要修改代码，去除后续登录的功能</p>
+
+<p>关于FreeRDP的使用可参考：https://github.com/FreeRDP/FreeRDP/wiki/CommandLineInterface</p>
+
+<h3 id="3使用c-sharp实现sharprdpcheck">3.使用C sharp实现(SharpRDPCheck)</h3>
+
+<ul>
+  <li>可以在Windows系统上运行</li>
+  <li>登录方式支持明文口令和NTLM hash</li>
+  <li>命令行下使用</li>
+</ul>
+
+<p>开发过程记录：</p>
+
+<p>这里无法通过调用ActiveX组件AxMSTSCLib实现，原因如下：</p>
+
+<ul>
+  <li>使用ActiveX组件AxMSTSCLib无法通过NTLM hash登录</li>
+  <li>对命令行的支持不够友好</li>
+</ul>
+
+<p>所以只能参照<a href="https://github.com/SecureAuthCorp/impacket/blob/master/examples/rdp_check.py">rdp_check.py</a>的方式，手动构造通信数据</p>
+
+<p>经过搜索，我找到了一个可供参考的代码：https://github.com/RDPUploader/RDPUploader</p>
+
+<p>RDPUploader包括三个子项目，编译成功后生成两个dll和一个exe文件，不支持命令行操作，也不支持NTLM hash登录，但其中的通信过程写的很清晰</p>
+
+<p>接下来以RDPUploader为模板进行开发</p>
+
+<p>这里具体介绍一下支持NTLM hash登录的方法：</p>
+
+<p>Remote Desktop Protocol在进行验证时，先将明文口令转换成NTLM hash，再进行验证</p>
+
+<p>我们首先寻找RDPUploader中从明文口令转换为NTLM hash的代码，具体内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private static byte[] nTOWFv1(string password)
+{
+    if (password == null)
+	{
+        throw new Exception("Password parameter is required");
+    }
+
+    return MD4.ComputeHash(Encoding.Unicode.GetBytes(password));
+}
+
+private static byte[] nTOWFv2(string domain, string username, string password)
+{
+    HMACT64 hmact = new HMACT64(nTOWFv1(password));
+    hmact.update(Encoding.Unicode.GetBytes(username.ToUpper()));
+    hmact.update(Encoding.Unicode.GetBytes(domain));
+	return hmact.digest();
+}
+</code></pre></div></div>
+
+<p><strong>补充：NTLM hash的生成方法</strong></p>
+
+<ol>
+  <li>将明文口令转换成十六进制的格式</li>
+  <li>转换成Unicode格式，即在每个字节之后添加0x00</li>
+  <li>对Unicode字符串作MD4加密，生成32位的十六进制数字串</li>
+</ol>
+
+<p>这里以明文口令test123为例：</p>
+
+<p>转换成十六进制的格式为<code class="language-plaintext highlighter-rouge">74657374313233</code></p>
+
+<p>转换成Unicode格式为<code class="language-plaintext highlighter-rouge">7400650073007400310032003300</code></p>
+
+<p>对字符串<code class="language-plaintext highlighter-rouge">7400650073007400310032003300</code>作MD4加密，结果为<code class="language-plaintext highlighter-rouge">c5a237b7e9d8e708d8436b6148a25fa1</code></p>
+
+<p>更多细节可参考之前的文章<a href="https://3gstudent.github.io/Windows%E4%B8%8B%E7%9A%84%E5%AF%86%E7%A0%81hash-NTLM-hash%E5%92%8CNet-NTLM-hash%E4%BB%8B%E7%BB%8D">《Windows下的密码hash——NTLM hash和Net-NTLM hash介绍》</a></p>
+
+<p>这里我们可以将<code class="language-plaintext highlighter-rouge">nTOWFv1(password)</code>的结果输出，验证NTLM hash的生成方法是否准确，修改后的代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>private static byte[] nTOWFv2(string domain, string username, string password)
+{
+
+    byte[] a = nTOWFv1(password);
+    string text = "";
+    for (int i = 0; i &lt; a.Length; i++)
+    {
+        text += a[i].ToString("X2");
+    }
+    Console.WriteLine(text);
+    HMACT64 hmact = new HMACT64(a);
+    hmact.update(Encoding.Unicode.GetBytes(username.ToUpper()));
+    hmact.update(Encoding.Unicode.GetBytes(domain));
+	return hmact.digest();
+}
+</code></pre></div></div>
+
+<p>输出的字符串为<code class="language-plaintext highlighter-rouge">C5A237B7E9D8E708D8436B6148A25FA1</code>，验证成功</p>
+
+<p>接下来，直接传入字符串<code class="language-plaintext highlighter-rouge">C5A237B7E9D8E708D8436B6148A25FA1</code>进行验证</p>
+
+<p>这里需要将hex格式的字符串转换为byte[]，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>public static byte[] ConvertHexStringToBytes(string hexString)
+{
+    hexString = hexString.Replace(" ", "");
+    if (hexString.Length % 2 != 0)
+    {
+        throw new ArgumentException("wrong length of ntlm hash");
+    }
+	byte[] returnBytes = new byte[hexString.Length / 2];
+    for (int i = 0; i &lt; returnBytes.Length; i++)
+    {
+        returnBytes[i] = Convert.ToByte(hexString.Substring(i * 2, 2), 16);
+    }
+	return returnBytes;
+ }
+
+private static byte[] nTOWFv2(string domain, string username, string password)
+{
+    string text = "C5A237B7E9D8E708D8436B6148A25FA1";
+	byte[] byteArray = ConvertHexStringToBytes(text);
+    HMACT64 hmact = new HMACT64(byteArray);
+    hmact.update(Encoding.Unicode.GetBytes(username.ToUpper()));
+    hmact.update(Encoding.Unicode.GetBytes(domain));
+	return hmact.digest();
+}
+</code></pre></div></div>
+
+<p>验证成功，最后将固定字符串修改为变量传递即可实现对NTLM hash登录的支持</p>
+
+<p>完整代码已开源，地址如下：https://github.com/3gstudent/SharpRDPCheck/</p>
+
+<p>可通过Visual Studio进行编译，编译的目标框架推荐使用.NET Framework 4.6，这是为了使用TLSv1.2</p>
+
+<p>否则会使用TLSv1.0，在进行登录时会失败，提示如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[!] Authentication Error (The decryption operation failed, see inner exception.)
+
+InnerException: System.ComponentModel.Win32Exception (0x80004005): The Local Sec
+urity Authority cannot be contacted
+</code></pre></div></div>
+
+<p>参考资料：https://docs.microsoft.com/en-us/dotnet/api/system.net.security.sslstream.authenticateasclient?redirectedfrom=MSDN&amp;view=netframework-4.8</p>
+
+<p>编译成功后在安装.NET Framework 4的Windows系统下都可以正常使用</p>
+
+<h2 id="0x04-防御思路">0x04 防御思路</h2>
+<hr />
+
+<p>对于RDP的爆破攻击，可以选择提高用户口令的强度</p>
+
+<p>对于爆破行为的检测，可以通过cmd查看其他用户通过RDP登录当前系统的日志：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wevtutil gli "Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational"
+wevtutil qe /f:text "Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational"
+</code></pre></div></div>
+
+<p>每当Listener RDP-Tcp收到一个连接请求，将产生EventID为261的日志</p>
+
+<p>也就是说，只要收到了RDP的连接请求，无论连接是否成功，均会产生EventID为261的日志</p>
+
+<p>通过Powershell查看其他用户通过RDP登录当前系统的日志：</p>
+
+<p>https://gallery.technet.microsoft.com/Remote-Desktop-Connection-3fe225cd</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了针对Remote Desktop Protocol，验证口令或者NTLM hash的实现方法，开源代码SharpRDPCheck，分享程序实现NTLM hash登录的细节，最后介绍通过日志检测RDP爆破行为的方法。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

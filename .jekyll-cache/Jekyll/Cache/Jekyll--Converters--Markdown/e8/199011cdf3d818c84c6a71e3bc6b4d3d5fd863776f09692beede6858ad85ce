@@ -1,0 +1,1099 @@
+I"Jq<section>
+  
+
+    
+    
+      
+        <h3>2018</h3>
+    
+
+    
+      
+        <ul>
+      
+        <li><time>28 Jan - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E5%9F%BA%E7%A1%80-%E8%8E%B7%E5%BE%97%E5%BD%93%E5%89%8D%E7%B3%BB%E7%BB%9F%E5%B7%B2%E5%AE%89%E8%A3%85%E7%9A%84%E7%A8%8B%E5%BA%8F%E5%88%97%E8%A1%A8">
+            渗透基础——获得当前系统已安装的程序列表
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>26 Jan - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E7%A6%BB%E7%BA%BF%E5%AF%BC%E5%87%BAChrome%E6%B5%8F%E8%A7%88%E5%99%A8%E4%B8%AD%E4%BF%9D%E5%AD%98%E7%9A%84%E5%AF%86%E7%A0%81">
+            渗透技巧——离线导出Chrome浏览器中保存的密码
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>25 Jan - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E5%AF%BC%E5%87%BAChrome%E6%B5%8F%E8%A7%88%E5%99%A8%E4%B8%AD%E4%BF%9D%E5%AD%98%E7%9A%84%E5%AF%86%E7%A0%81">
+            渗透技巧——导出Chrome浏览器中保存的密码
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>23 Jan - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E5%88%A9%E7%94%A8%E5%9B%BE%E6%A0%87%E6%96%87%E4%BB%B6%E8%8E%B7%E5%8F%96%E8%BF%9E%E6%8E%A5%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%9A%84NTLMv2-Hash">
+            渗透技巧——利用图标文件获取连接文件服务器的NTLMv2 Hash
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>18 Jan - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E5%88%A9%E7%94%A8tscon%E5%AE%9E%E7%8E%B0%E6%9C%AA%E6%8E%88%E6%9D%83%E7%99%BB%E5%BD%95%E8%BF%9C%E7%A8%8B%E6%A1%8C%E9%9D%A2">
+            渗透技巧——利用tscon实现未授权登录远程桌面
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>15 Jan - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E5%88%A9%E7%94%A8netsh%E6%8A%93%E5%8F%96%E8%BF%9E%E6%8E%A5%E6%96%87%E4%BB%B6%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%9A%84NTLMv2-Hash">
+            渗透技巧——利用netsh抓取连接文件服务器的NTLMv2 Hash
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>11 Jan - </time>
+          <a href="/Windows%E4%B8%8B%E7%9A%84%E5%AF%86%E7%A0%81hash-NTLM-hash%E5%92%8CNet-NTLM-hash%E4%BB%8B%E7%BB%8D">
+            Windows下的密码hash——NTLM hash和Net-NTLM hash介绍
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>03 Jan - </time>
+          <a href="/AtomBombing%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">
+            AtomBombing利用分析
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>01 Jan - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E6%A8%A1%E6%8B%9FIE%E6%B5%8F%E8%A7%88%E5%99%A8%E4%B8%8B%E8%BD%BD%E6%96%87%E4%BB%B6">
+            渗透技巧——模拟IE浏览器下载文件
+          </a>
+        </li>
+    
+      
+        
+        
+        
+          </ul>
+          <h3>2017</h3>
+          <ul>
+        
+      
+        <li><time>28 Dec - </time>
+          <a href="/%E5%88%A9%E7%94%A8BHO%E5%AE%9E%E7%8E%B0IE%E6%B5%8F%E8%A7%88%E5%99%A8%E5%8A%AB%E6%8C%81">
+            利用BHO实现IE浏览器劫持
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>24 Dec - </time>
+          <a href="/Invoke-PSImage%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">
+            Invoke-PSImage利用分析
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>21 Dec - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Windows%E4%B8%ADCredential-Manager%E7%9A%84%E4%BF%A1%E6%81%AF%E8%8E%B7%E5%8F%96">
+            渗透技巧——Windows中Credential Manager的信息获取
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>19 Dec - </time>
+          <a href="/Process-Doppelganging%E5%88%A9%E7%94%A8%E4%BB%8B%E7%BB%8D">
+            Process Doppelganging利用介绍
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>15 Dec - </time>
+          <a href="/%E5%9F%9F%E6%B8%97%E9%80%8F-Pass-The-Hash%E7%9A%84%E5%AE%9E%E7%8E%B0">
+            域渗透——Pass The Hash的实现
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>11 Dec - </time>
+          <a href="/TeamViewer-13.0.5058%E4%B8%AD%E7%9A%84%E6%9D%83%E9%99%90%E6%BC%8F%E6%B4%9E%E6%B5%8B%E8%AF%95">
+            TeamViewer 13.0.5058中的权限漏洞测试
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>08 Dec - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-_%E9%9A%90%E8%97%8F_%E6%B3%A8%E5%86%8C%E8%A1%A8%E7%9A%84%E6%9B%B4%E5%A4%9A%E6%B5%8B%E8%AF%95">
+            渗透技巧——"隐藏"注册表的更多测试
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>05 Dec - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-_%E9%9A%90%E8%97%8F_%E6%B3%A8%E5%86%8C%E8%A1%A8%E7%9A%84%E5%88%9B%E5%BB%BA">
+            渗透技巧——"隐藏"注册表的创建
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>30 Nov - </time>
+          <a href="/%E5%82%80%E5%84%A1%E8%BF%9B%E7%A8%8B%E7%9A%84%E5%AE%9E%E7%8E%B0%E4%B8%8E%E6%A3%80%E6%B5%8B">
+            傀儡进程的实现与检测
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>23 Nov - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E4%BB%8Egithub%E4%B8%8B%E8%BD%BD%E6%96%87%E4%BB%B6%E7%9A%84%E5%A4%9A%E7%A7%8D%E6%96%B9%E6%B3%95">
+            渗透技巧——从github下载文件的多种方法
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>22 Nov - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E4%BB%8EAdmin%E6%9D%83%E9%99%90%E5%88%87%E6%8D%A2%E5%88%B0System%E6%9D%83%E9%99%90">
+            渗透技巧——从Admin权限切换到System权限
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>20 Nov - </time>
+          <a href="/CIA-Vault7-RDB%E4%B8%AD%E7%9A%84Windows%E5%90%8E%E9%97%A8%E5%88%A9%E7%94%A8%E6%96%B9%E6%B3%95%E5%88%86%E6%9E%90">
+            CIA Vault7 RDB中的Windows后门利用方法分析
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>12 Nov - </time>
+          <a href="/CIA-Hive%E6%B5%8B%E8%AF%95%E6%8C%87%E5%8D%97-%E6%BA%90%E4%BB%A3%E7%A0%81%E8%8E%B7%E5%8F%96%E4%B8%8E%E7%AE%80%E8%A6%81%E5%88%86%E6%9E%90">
+            CIA Hive测试指南——源代码获取与简要分析
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>10 Nov - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Windows%E7%B3%BB%E7%BB%9F%E7%9A%84%E5%B8%90%E6%88%B7%E9%9A%90%E8%97%8F">
+            渗透技巧——Windows系统的帐户隐藏
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>01 Nov - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Windows%E7%B3%BB%E7%BB%9F%E8%BF%9C%E7%A8%8B%E6%A1%8C%E9%9D%A2%E7%9A%84%E5%A4%9A%E7%94%A8%E6%88%B7%E7%99%BB%E5%BD%95">
+            渗透技巧——Windows系统远程桌面的多用户登录
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>30 Oct - </time>
+          <a href="/Linux%E4%B8%8B%E7%9A%84%E5%AF%86%E7%A0%81Hash-%E5%8A%A0%E5%AF%86%E6%96%B9%E5%BC%8F%E4%B8%8E%E7%A0%B4%E8%A7%A3%E6%96%B9%E6%B3%95%E7%9A%84%E6%8A%80%E6%9C%AF%E6%95%B4%E7%90%86">
+            Linux下的密码Hash——加密方式与破解方法的技术整理
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>24 Oct - </time>
+          <a href="/%E5%88%A9%E7%94%A8BDF%E5%90%91DLL%E6%96%87%E4%BB%B6%E6%A4%8D%E5%85%A5%E5%90%8E%E9%97%A8">
+            利用BDF向DLL文件植入后门
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>20 Oct - </time>
+          <a href="/%E5%88%A9%E7%94%A8BDF%E5%90%91EXE%E6%96%87%E4%BB%B6%E6%A4%8D%E5%85%A5%E5%90%8E%E9%97%A8">
+            利用BDF向EXE文件植入后门
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>17 Oct - </time>
+          <a href="/Catalog%E7%AD%BE%E5%90%8D%E4%BC%AA%E9%80%A0-Long-UNC%E6%96%87%E4%BB%B6%E5%90%8D%E6%AC%BA%E9%AA%97">
+            Catalog签名伪造——Long UNC文件名欺骗
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>11 Oct - </time>
+          <a href="/Authenticode%E7%AD%BE%E5%90%8D%E4%BC%AA%E9%80%A0-%E9%92%88%E5%AF%B9%E6%96%87%E4%BB%B6%E7%B1%BB%E5%9E%8B%E7%9A%84%E7%AD%BE%E5%90%8D%E4%BC%AA%E9%80%A0">
+            Authenticode签名伪造——针对文件类型的签名伪造
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>10 Oct - </time>
+          <a href="/Authenticode%E7%AD%BE%E5%90%8D%E4%BC%AA%E9%80%A0-PE%E6%96%87%E4%BB%B6%E7%9A%84%E7%AD%BE%E5%90%8D%E4%BC%AA%E9%80%A0%E4%B8%8E%E7%AD%BE%E5%90%8D%E9%AA%8C%E8%AF%81%E5%8A%AB%E6%8C%81">
+            Authenticode签名伪造——PE文件的签名伪造与签名验证劫持
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>08 Oct - </time>
+          <a href="/CAT%E6%96%87%E4%BB%B6%E6%95%B0%E5%AD%97%E7%AD%BE%E5%90%8D%E4%BD%BF%E7%94%A8%E6%8A%80%E5%B7%A7">
+            CAT文件数字签名使用技巧
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>30 Sep - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Token%E7%AA%83%E5%8F%96%E4%B8%8E%E5%88%A9%E7%94%A8">
+            渗透技巧——Token窃取与利用
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>25 Sep - </time>
+          <a href="/%E5%9F%9F%E6%B8%97%E9%80%8F-%E5%88%A9%E7%94%A8SYSVOL%E8%BF%98%E5%8E%9F%E7%BB%84%E7%AD%96%E7%95%A5%E4%B8%AD%E4%BF%9D%E5%AD%98%E7%9A%84%E5%AF%86%E7%A0%81">
+            域渗透——利用SYSVOL还原组策略中保存的密码
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>19 Sep - </time>
+          <a href="/Use-CLR-to-bypass-UAC">
+            Use CLR to bypass UAC
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>15 Sep - </time>
+          <a href="/%E5%9F%9F%E6%B8%97%E9%80%8F-%E5%88%A9%E7%94%A8DCOM%E5%9C%A8%E8%BF%9C%E7%A8%8B%E7%B3%BB%E7%BB%9F%E6%89%A7%E8%A1%8C%E7%A8%8B%E5%BA%8F">
+            域渗透——利用DCOM在远程系统执行程序
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>12 Sep - </time>
+          <a href="/Empire%E4%B8%AD%E7%9A%84Invoke-WScriptBypassUAC%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">
+            Empire中的Invoke-WScriptBypassUAC利用分析
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>07 Sep - </time>
+          <a href="/Use-powershell-to-find-a-writable-windows-service">
+            Use powershell to find a writable windows service
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>09 Aug - </time>
+          <a href="/Use-Logon-Scripts-to-maintain-persistence">
+            Use Logon Scripts to maintain persistence
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>08 Aug - </time>
+          <a href="/Use-COM-Object-hijacking-to-maintain-persistence-Hijack-explorer.exe">
+            Use COM Object hijacking to maintain persistence——Hijack explorer.exe
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>04 Aug - </time>
+          <a href="/Use-COM-Object-hijacking-to-maintain-persistence-Hijack-CAccPropServicesClass-and-MMDeviceEnumerator">
+            Use COM Object hijacking to maintain persistence——Hijack CAccPropServicesClass and MMDeviceEnumerator
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>03 Aug - </time>
+          <a href="/Use-xwizard.exe-to-load-dll">
+            Use xwizard.exe to load dll
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>01 Aug - </time>
+          <a href="/Windows-Lnk%E8%BF%9C%E7%A8%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E(CVE-2017-8464)%E5%88%A9%E7%94%A8%E6%B5%8B%E8%AF%95">
+            Windows Lnk远程代码执行漏洞(CVE-2017-8464)利用测试
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>31 Jul - </time>
+          <a href="/Use-msdtc-to-maintain-persistence">
+            Use msdtc to maintain persistence
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>28 Jul - </time>
+          <a href="/Use-CLR-to-maintain-persistence">
+            Use CLR to maintain persistence
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>26 Jul - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%B5%8B%E8%AF%95%E4%B8%AD%E7%9A%84certutil.exe">
+            渗透测试中的certutil
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>22 Jul - </time>
+          <a href="/Office-Persistence-on-x64-operating-system">
+            Office Persistence on x64 operating system
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>20 Jul - </time>
+          <a href="/Use-Excel.Application-object's-RegisterXLL()-method-to-load-dll">
+            Use Excel.Application object's RegisterXLL() method to load dll
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>15 Jul - </time>
+          <a href="/Use-Office-to-maintain-persistence">
+            Use Office to maintain persistence
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>11 Jul - </time>
+          <a href="/Use-msxsl-to-bypass-AppLocker">
+            Use msxsl to bypass AppLocker
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>09 Jul - </time>
+          <a href="/%E6%9C%AC%E5%9C%B0%E5%AF%86%E7%A0%81%E6%9F%A5%E7%9C%8B%E5%B7%A5%E5%85%B7LaZagne%E4%B8%AD%E7%9A%84%E8%87%AA%E5%AE%9A%E4%B9%89%E8%84%9A%E6%9C%AC%E5%BC%80%E5%8F%91">
+            本地密码查看工具LaZagne中的自定义脚本开发
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>05 Jul - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Windows%E5%B9%B3%E5%8F%B0%E8%BF%90%E8%A1%8CMasscan%E5%92%8CNmap">
+            渗透技巧——Windows平台运行Masscan和Nmap
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>30 Jun - </time>
+          <a href="/%E5%88%A9%E7%94%A8JS%E5%8A%A0%E8%BD%BD.Net%E7%A8%8B%E5%BA%8F">
+            利用JS加载.Net程序
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>25 Jun - </time>
+          <a href="/%E5%88%A9%E7%94%A8API-NtQueryInformationThread%E5%92%8CI_QueryTagInformation%E5%AE%9E%E7%8E%B0%E5%AF%B9Windwos%E6%97%A5%E5%BF%97%E7%9B%91%E6%8E%A7%E7%9A%84%E7%BB%95%E8%BF%87">
+            利用API NtQueryInformationThread和I_QueryTagInformation实现对Windwos日志监控的绕过
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>23 Jun - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Windows%E6%97%A5%E5%BF%97%E7%9A%84%E5%88%A0%E9%99%A4%E4%B8%8E%E7%BB%95%E8%BF%87">
+            渗透技巧——Windows日志的删除与绕过
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>15 Jun - </time>
+          <a href="/Use-AppDomainManager-to-maintain-persistence">
+            Use AppDomainManager to maintain persistence
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>07 Jun - </time>
+          <a href="/Use-Waitfor.exe-to-maintain-persistence">
+            Use Waitfor.exe to maintain persistence
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>30 May - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E7%A8%8B%E5%BA%8F%E7%9A%84%E9%99%8D%E6%9D%83%E5%90%AF%E5%8A%A8">
+            渗透技巧——程序的降权启动
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>25 May - </time>
+          <a href="/Study-Notes-of-using-BGInfo-to-bypass-Application-Whitelisting">
+            Study Notes of using BGInfo to bypass Application Whitelisting
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>21 May - </time>
+          <a href="/Study-Notes-of-using-SilentCleanup-to-bypass-UAC">
+            Study Notes of using SilentCleanup to bypass UAC
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>18 May - </time>
+          <a href="/%E9%80%86%E5%90%91%E5%88%86%E6%9E%90-%E4%BD%BF%E7%94%A8IDA%E5%8A%A8%E6%80%81%E8%B0%83%E8%AF%95WanaCrypt0r%E4%B8%AD%E7%9A%84tasksche.exe">
+            逆向分析——使用IDA动态调试WanaCrypt0r中的tasksche.exe
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>10 May - </time>
+          <a href="/An-interesting-way-of-bypassing-Windows-Attachment-Manager">
+            An interesting way of bypassing Windows Attachment Manager
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>05 May - </time>
+          <a href="/Hidden-Alternative-Data-Streams%E7%9A%84%E8%BF%9B%E9%98%B6%E5%88%A9%E7%94%A8%E6%8A%80%E5%B7%A7">
+            Hidden Alternative Data Streams的进阶利用技巧
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>26 Apr - </time>
+          <a href="/NSA-DanderSpiritz%E6%B5%8B%E8%AF%95%E6%8C%87%E5%8D%97-%E6%9C%A8%E9%A9%AC%E7%94%9F%E6%88%90%E4%B8%8E%E6%B5%8B%E8%AF%95">
+            NSA DanderSpiritz测试指南——木马生成与测试
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>20 Apr - </time>
+          <a href="/%E5%86%85%E7%BD%91%E5%AE%89%E5%85%A8-%E5%88%A9%E7%94%A8NSA-Smbtouch%E6%89%B9%E9%87%8F%E6%A3%80%E6%B5%8B%E5%86%85%E7%BD%91">
+            内网安全——利用NSA Smbtouch批量检测内网
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>11 Apr - </time>
+          <a href="/%E5%88%A9%E7%94%A8globalAPIhooks%E5%9C%A8Win7%E7%B3%BB%E7%BB%9F%E4%B8%8B%E9%9A%90%E8%97%8F%E8%BF%9B%E7%A8%8B">
+            利用globalAPIhooks在Win7系统下隐藏进程
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>06 Apr - </time>
+          <a href="/%E9%80%9A%E8%BF%87APC%E5%AE%9E%E7%8E%B0Dll%E6%B3%A8%E5%85%A5-%E7%BB%95%E8%BF%87Sysmon%E7%9B%91%E6%8E%A7">
+            通过APC实现Dll注入——绕过Sysmon监控
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>28 Mar - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%B5%8B%E8%AF%95%E4%B8%AD%E7%9A%84Application-Verifier(DoubleAgent%E5%88%A9%E7%94%A8%E4%BB%8B%E7%BB%8D)">
+            渗透测试中的Application Verifier(DoubleAgent利用介绍)
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>23 Mar - </time>
+          <a href="/Study-Notes-of-using-sdclt.exe-to-bypass-UAC">
+            Study Notes of using sdclt.exe to bypass UAC
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>17 Mar - </time>
+          <a href="/Windows-Shellcode%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0-%E5%88%A9%E7%94%A8VirtualAlloc%E7%BB%95%E8%BF%87DEP">
+            Windows Shellcode学习笔记——利用VirtualAlloc绕过DEP
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>10 Mar - </time>
+          <a href="/Windows-Shellcode%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0-%E9%80%9A%E8%BF%87VirtualProtect%E7%BB%95%E8%BF%87DEP">
+            Windows Shellcode学习笔记——通过VirtualProtect绕过DEP
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>02 Mar - </time>
+          <a href="/Windows-Shellcode%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0-%E6%A0%88%E6%BA%A2%E5%87%BA%E4%B8%AD%E5%AF%B9jmp-esp%E7%9A%84%E5%88%A9%E7%94%A8%E4%B8%8E%E4%BC%98%E5%8C%96">
+            Windows Shellcode学习笔记——栈溢出中对jmp esp的利用与优化
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>24 Feb - </time>
+          <a href="/Windows-Shellcode%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0-shellcode%E5%9C%A8%E6%A0%88%E6%BA%A2%E5%87%BA%E4%B8%AD%E7%9A%84%E5%88%A9%E7%94%A8%E4%B8%8E%E4%BC%98%E5%8C%96">
+            Windows Shellcode学习笔记——shellcode在栈溢出中的利用与优化
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>16 Feb - </time>
+          <a href="/Windows-Shellcode%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0-shellcode%E7%9A%84%E6%8F%90%E5%8F%96%E4%B8%8E%E6%B5%8B%E8%AF%95">
+            Windows Shellcode学习笔记——shellcode的提取与测试
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>10 Feb - </time>
+          <a href="/32%E4%BD%8D%E7%A8%8B%E5%BA%8F%E5%AF%B964%E4%BD%8D%E8%BF%9B%E7%A8%8B%E7%9A%84%E8%BF%9C%E7%A8%8B%E6%B3%A8%E5%85%A5%E5%AE%9E%E7%8E%B0">
+            32位程序对64位进程的远程注入实现
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>18 Jan - </time>
+          <a href="/Windows-Shellcode%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0-%E9%80%9A%E8%BF%87VisualStudio%E7%94%9F%E6%88%90shellcode">
+            Windows Shellcode学习笔记——通过VisualStudio生成shellcode
+          </a>
+        </li>
+    
+      
+        
+        
+        
+          </ul>
+          <h3>2016</h3>
+          <ul>
+        
+      
+        <li><time>31 Dec - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E5%BF%AB%E6%8D%B7%E6%96%B9%E5%BC%8F%E6%96%87%E4%BB%B6%E7%9A%84%E5%8F%82%E6%95%B0%E9%9A%90%E8%97%8F%E6%8A%80%E5%B7%A7">
+            渗透技巧——快捷方式文件的参数隐藏技巧
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>28 Dec - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%B5%8B%E8%AF%95%E4%B8%AD%E7%9A%84msiexec">
+            渗透测试中的msiexec
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>22 Dec - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%B5%8B%E8%AF%95%E4%B8%AD%E7%9A%84ClickOnce">
+            渗透测试中的ClickOnce
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>15 Dec - </time>
+          <a href="/Powershell-tricks__Hide-Process-by-kd.exe">
+            Powershell tricks::Hide Process by kd.exe
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>07 Dec - </time>
+          <a href="/DLL%E5%8A%AB%E6%8C%81%E6%BC%8F%E6%B4%9E%E8%87%AA%E5%8A%A8%E5%8C%96%E8%AF%86%E5%88%AB%E5%B7%A5%E5%85%B7Rattler%E6%B5%8B%E8%AF%95">
+            DLL劫持漏洞自动化识别工具Rattler测试
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>25 Nov - </time>
+          <a href="/Study-Notes-of-using-dnx.exe-&amp;-rcsi.exe-to-bypass-Decvice-Guard-UMCI">
+            Study Notes of using dnx.exe / rcsi.exe to bypass Decvice Guard UMCI
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>22 Nov - </time>
+          <a href="/War3%E5%9C%B0%E5%9B%BE-%E6%BC%8F%E6%B4%9E-%E5%88%86%E6%9E%90%E4%BB%8B%E7%BB%8D">
+            War3地图“漏洞”分析介绍
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>16 Nov - </time>
+          <a href="/Study-Notes-Weekly-No.4(Use-tracker-to-load-dll-&amp;-Use-csi-to-bypass-UMCI-&amp;-Execute-C-from-XSLT-file)">
+            Study Notes Weekly No.4(Use tracker to load dll &amp; Use csi to bypass UMCI &amp; Execute C# from XSLT file)
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>31 Oct - </time>
+          <a href="/Joomla-3.4.4-3.6.3-Account-Creation-&amp;Privilege-Escalation%E6%B5%8B%E8%AF%95%E8%AE%B0%E5%BD%95">
+            Joomla 3.4.4-3.6.3 Account Creation &amp;Privilege Escalation测试记录
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>27 Oct - </time>
+          <a href="/%E9%9A%90%E5%86%99%E6%8A%80%E5%B7%A7-%E5%88%A9%E7%94%A8JPEG%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F%E9%9A%90%E8%97%8Fpayload">
+            隐写技巧——利用JPEG文件格式隐藏payload
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>26 Oct - </time>
+          <a href="/Study-Notes-Weekly-No.3(Use-odbcconf-to-load-dll-&amp;-Get-Exports-&amp;-ETW-USB-Keylogger)">
+            Study Notes Weekly No.3(Use odbcconf to load dll &amp; Get-Exports &amp; ETW USB Keylogger)
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>19 Oct - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%B5%8B%E8%AF%95%E4%B8%AD%E7%9A%84Application-Compatibility-Shims">
+            渗透测试中的Application Compatibility Shims
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>13 Oct - </time>
+          <a href="/%E6%95%85%E9%9A%9C%E8%AF%8A%E6%96%AD%E5%B9%B3%E5%8F%B0%E5%9C%A8%E6%B8%97%E9%80%8F%E6%B5%8B%E8%AF%95%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8%E6%8A%80%E5%B7%A7">
+            故障诊断平台在渗透测试中的应用技巧
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>29 Sep - </time>
+          <a href="/Netsh-persistence">
+            Netsh persistence
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>20 Sep - </time>
+          <a href="/Use-MSBuild-To-Do-More">
+            Use MSBuild To Do More
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>13 Sep - </time>
+          <a href="/Study-Notes-Weekly-No.2(Shellcode-Via-JScript-&amp;-VBScript)">
+            Study Notes Weekly No.2(Shellcode Via JScript &amp; VBScript)
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>07 Sep - </time>
+          <a href="/%E6%B8%97%E9%80%8F%E6%B5%8B%E8%AF%95%E4%B8%AD%E7%9A%84Volume-Shadow-Copy">
+            渗透测试中的Volume Shadow Copy
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>26 Aug - </time>
+          <a href="/Study-Notes-Weekly-No.1(Monitor-WMI_ExportsToC++_Use-DiskCleanup-bypass-UAC)">
+            Study Notes Weekly No.1(Monitor WMI &amp; ExportsToC++ &amp; Use DiskCleanup bypass UAC)
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>22 Aug - </time>
+          <a href="/Userland-registry-hijacking">
+            Userland registry hijacking
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>16 Aug - </time>
+          <a href="/Study-Notes-of-WMI-Persistence-using-wmic.exe">
+            Study Notes of WMI Persistence using wmic.exe
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>12 Aug - </time>
+          <a href="/%E9%9A%90%E5%86%99%E6%8A%80%E5%B7%A7-%E5%9C%A8PE%E6%96%87%E4%BB%B6%E7%9A%84%E6%95%B0%E5%AD%97%E8%AF%81%E4%B9%A6%E4%B8%AD%E9%9A%90%E8%97%8FPayload">
+            隐写技巧——在PE文件的数字证书中隐藏Payload
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>22 Jul - </time>
+          <a href="/%E9%9A%90%E5%86%99%E6%8A%80%E5%B7%A7-PNG%E6%96%87%E4%BB%B6%E4%B8%AD%E7%9A%84LSB%E9%9A%90%E5%86%99">
+            隐写技巧——PNG文件中的LSB隐写
+          </a>
+        </li>
+    
+      
+        
+        
+        
+      
+        <li><time>15 Jul - </time>
+          <a href="/%E9%9A%90%E5%86%99%E6%8A%80%E5%B7%A7-%E5%88%A9%E7%94%A8PNG%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F%E9%9A%90%E8%97%8FPayload">
+            隐写技巧——利用PNG文件格式隐藏Payload
+          </a>
+        </li>
+    
+    </ul>
+
+  
+</section>
+:ET

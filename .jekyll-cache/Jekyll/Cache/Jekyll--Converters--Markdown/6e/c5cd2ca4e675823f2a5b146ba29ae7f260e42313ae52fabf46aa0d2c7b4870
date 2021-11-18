@@ -1,0 +1,212 @@
+I"�<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在上篇文章<a href="https://3gstudent.github.io/%E9%80%9A%E8%BF%87Boolang%E8%AF%AD%E8%A8%80%E6%89%A7%E8%A1%8Cshellcode%E7%9A%84%E5%88%A9%E7%94%A8%E5%88%86%E6%9E%90">《通过Boolang语言执行shellcode的利用分析》</a>介绍了利用Boolang语言执行shellcode的方法，本文将按照同样的思路，使用Mono(跨平台.NET运行环境)实现执行shellcode的功能，分析利用思路，给出防御建议</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<ul>
+  <li>Mono简介</li>
+  <li>Mono使用示例</li>
+  <li>通过Mono执行shellcode的方法</li>
+  <li>利用分析</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-mono简介">0x02 Mono简介</h2>
+<hr />
+
+<p>参考资料：</p>
+
+<p>https://www.mono-project.com/</p>
+
+<p>https://github.com/mono/mono</p>
+
+<p>Mono是Microsoft .NET Framework的开源实现</p>
+
+<p>包括C#编译器和通用语言架构</p>
+
+<p>Mono项目不仅可以运行于Windows系统上，还可以运行于Linux，FreeBSD，Unix，OS X和Solaris</p>
+
+<h2 id="0x03-mono使用示例">0x03 Mono使用示例</h2>
+<hr />
+
+<p>开发环境： Win7x64</p>
+
+<p>下载Mono安装包，地址如下：</p>
+
+<p>https://www.mono-project.com/download/stable/#download-win</p>
+
+<p>默认安装路径：<code class="language-plaintext highlighter-rouge">C:\Program Files\Mono\</code></p>
+
+<h3 id="1编译程序输出hello-world">1.编译程序输出hello world</h3>
+
+<p>HelloWorld.cs的内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+
+public class HelloWorld
+{
+    public static void Main(string[] args)
+    {
+        Console.WriteLine ("Hello Mono World");
+    }
+}
+</code></pre></div></div>
+
+<p>使用mcs.exe进行编译，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"C:\Program Files\Mono\bin\mcs" HelloWorld.cs
+</code></pre></div></div>
+
+<p>生成HelloWorld.exe</p>
+
+<h3 id="2编译程序调用messagebox">2.编译程序调用Messagebox</h3>
+
+<p>Messagebox.cs的内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Windows.Forms;
+namespace MessageboxTest
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {          
+            MessageBox.Show("Hello World");
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>使用mcs.exe进行编译，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"C:\Program Files\Mono\bin\mcs" Messagebox.cs -r:System.Windows.Forms.dll
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>需要加<code class="language-plaintext highlighter-rouge">-r</code>参数指定引用的dll，否则报错提示如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Messagebox.cs(2,22): error CS0234: The type or namespace name `Forms' does not exist in the namespace `System.Windows'. Are you missing `System.Windows.Forms' assembly reference?
+Compilation failed: 1 error(s), 0 warnings
+</code></pre></div></div>
+
+<h3 id="3编译程序执行shellcode">3.编译程序执行shellcode</h3>
+
+<p>Shellcode.cs已上传至GitHub，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/Shellcode.cs</p>
+
+<p>使用mcs.exe进行编译，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"C:\Program Files\Mono\bin\mcs" Shellcode.cs
+</code></pre></div></div>
+
+<p>生成Shellcode.exe</p>
+
+<h2 id="0x04-通过mono执行shellcode的方法">0x04 通过Mono执行shellcode的方法</h2>
+<hr />
+
+<p>在0x03简单介绍了使用mcs.exe编译程序的方法</p>
+
+<p>这一节着重介绍利用Mono的特性绕过静态检测的方法</p>
+
+<h3 id="1将启动shellcode的代码和payload分离">1.将启动shellcode的代码和payload分离</h3>
+
+<h4 id="1将payload作base64加密并保存在文件中">(1)将payload作base64加密并保存在文件中</h4>
+
+<p>部分示例代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System.IO;
+byte[] shellcode64 = new byte[276] {xxx};
+String AsBase64String = Convert.ToBase64String(shellcode64);
+StreamWriter sw = new StreamWriter(@"C:\test\ShellcodeBase64.txt");
+sw.Write(AsBase64String);
+sw.Close()
+</code></pre></div></div>
+
+<p>base64编码后的payload已上传至GitHub，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/ShellcodeBase64.txt</p>
+
+<h4 id="2从指定文件读取payload作base解密后加载shellcode">(2)从指定文件读取payload，作base解密后加载shellcode</h4>
+
+<p>实现代码已上传至GitHub，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/ReadShellcode.cs</p>
+
+<h3 id="2使用csc将生成的文件编译成只能通过mono加载的形式">2.使用csc将生成的文件编译成只能通过Mono加载的形式</h3>
+
+<p>使用mcs编译出来的程序可以直接运行，这有可能被查杀</p>
+
+<p>使用csc进行编译可选的选项更多，我在csc帮助文件中发现可以生成只能通过Mono加载的形式，参数说明如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>-target:appcontainerexe       Build an Appcontainer executable (Short form: -t:appcontainerexe)
+</code></pre></div></div>
+
+<p>因此完整的编译命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"C:\Program Files\Mono\bin\csc" ReadShellcode.cs -target:appcontainerexe
+</code></pre></div></div>
+
+<p>生成文件ReadShellcode.exe，无法直接执行，只能通过Mono加载，加载的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"C:\Program Files\Mono\bin\mono.exe" ReadShellcode.exe
+</code></pre></div></div>
+
+<h3 id="3构造精简的mono运行环境">3.构造精简的Mono运行环境</h3>
+
+<p>如果我们要在另一系统执行以上文件，不必安装Mono的安装包</p>
+
+<p>经过测试只需要以下文件：</p>
+
+<ul>
+  <li>/bin/mono-2.0-sgen.dll</li>
+  <li>/bin/mono.exe</li>
+  <li>/bin/ReadShellcode.exe</li>
+  <li>/bin/ShellcodeBase64.txt</li>
+  <li>/lib/mono/4.5/mscorlib.dll</li>
+</ul>
+
+<p>树形图如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-14/2-1.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>调用Messagebox引用<code class="language-plaintext highlighter-rouge">System.Windows.Forms.dll</code>时所需文件的树形图如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-2-14/2-2.png" alt="Alt text" /></p>
+
+<h2 id="0x05-利用分析">0x05 利用分析</h2>
+<hr />
+
+<p>通过Mono(跨平台.NET运行环境)执行shellcode，有以下两个优点：</p>
+
+<p>1.通过Mono.exe加载启动程序，启动程序不包括恶意的功能，payload可保存在另一个脚本文件中</p>
+
+<p>2.通过Mono能够构造一个.Net环境，这可以解决某些程序对.Net环境的依赖</p>
+
+<p>例如：</p>
+
+<p>程序只能在.Net 4下运行，而当前系统不支持.Net 4，借助Mono就可以解决这个问题</p>
+
+<h2 id="0x06-防御检测">0x06 防御检测</h2>
+<hr />
+
+<p>通过跨平台.NET运行环境Mono执行shellcode，父进程为Mono.exe，值得注意</p>
+
+<p>这个技术无法绕过对程序行为的检测，所以可以通过检测进程行为的方式进行防御</p>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文介绍了Mono(跨平台.NET运行环境)的使用方法，分享了几种绕过静态检测的方法，分析利用思路，给出防御建议</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

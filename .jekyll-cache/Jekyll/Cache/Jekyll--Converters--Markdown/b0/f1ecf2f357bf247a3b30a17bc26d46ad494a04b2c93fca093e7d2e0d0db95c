@@ -1,0 +1,530 @@
+I"�Y<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Exchange Web Service(EWS)提供了一个访问Exchange资源的接口，我在github没有找到很合适的参考项目，于是对这方面的内容做一个系统性的整理，开源一份EWS的实现代码ewsManage，便于后续的二次开发。</p>
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>使用EWS Managed API访问Exchange资源</li>
+  <li>使用EWS SOAP XML message访问Exchange资源</li>
+  <li>开源代码ewsManage</li>
+  <li>ewsManage功能介绍</li>
+</ul>
+
+<h2 id="0x02-简介">0x02 简介</h2>
+<hr />
+
+<p>官方文档：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/client-developer/exchange-server-development</p>
+
+<p>两种访问Exchange资源的方法：</p>
+
+<ul>
+  <li>使用EWS Managed API</li>
+  <li>使用EWS SOAP XML message</li>
+</ul>
+
+<p>测试环境：</p>
+
+<ul>
+  <li>Exchange Server 2013 SP1</li>
+  <li>user: test1@test.com</li>
+  <li>pwd: test123!</li>
+  <li>url: https://test.com/ews/Exchange.asmx</li>
+  <li>AutodiscoverUrl: test1@test.com</li>
+</ul>
+
+<h2 id="0x03-使用ews-managed-api">0x03 使用EWS Managed API</h2>
+<hr />
+
+<p>官方资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/client-developer/exchange-web-services/get-started-with-ews-managed-api-client-applications</p>
+
+<p>这里使用EWS Managed API 2.0</p>
+
+<p>下载地址：</p>
+
+<p>https://www.microsoft.com/en-us/download/details.aspx?id=35371</p>
+
+<p>安装后从文件夹中找到文件<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.WebServices.dll</code>和<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.WebServices.xml</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>如果已经获得这两个文件，不需要安装EwsManagedApi.msi，这两个文件可以在后面的开源工程ewsManage中找到</p>
+
+<h3 id="1c-sharp实现">(1)C Sharp实现</h3>
+
+<p>开发环境：VS2015</p>
+
+<p>新建工程，并引用文件：</p>
+
+<p><code class="language-plaintext highlighter-rouge">Microsoft.Exchange.WebServices.dll</code>和<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.WebServices.xml</code></p>
+
+<p>C Sharp代码示例（列出收件箱所有邮件的标题）：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using Microsoft.Exchange.WebServices.Data;
+using System.Net;
+namespace EMAIL_EWS
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            ServicePointManager.ServerCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) =&gt; { return true; };
+            ExchangeService service = new ExchangeService(ExchangeVersion.Exchange2013_SP1);
+            service.Credentials = new WebCredentials("test1", "test123!");
+            service.AutodiscoverUrl("test1@test.com");
+            ItemView view = new ItemView(int.MaxValue);
+            FindItemsResults&lt;Item&gt; findResults = service.FindItems(WellKnownFolderName.Inbox, view);
+            foreach (Item item in findResults.Items)
+            {
+                if (item.Subject != null)
+                {
+                    Console.WriteLine(item.Subject);
+                }
+                else
+                {
+                    Console.WriteLine("no Title\r\n");
+                }
+            }
+        }
+    }
+}
+</code></pre></div></div>
+
+<h3 id="2powershell实现">(2)Powershell实现</h3>
+
+<p>Powershell代码示例（列出收件箱所有邮件的标题）：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>add-type @"
+    using System.Net;
+    using System.Security.Cryptography.X509Certificates;
+    public class TrustAllCertsPolicy : ICertificatePolicy {
+        public bool CheckValidationResult(
+            ServicePoint srvPoint, X509Certificate certificate,
+            WebRequest request, int certificateProblem) {
+            return true;
+        }
+    }
+"@
+[System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
+Import-Module -Name "C:\test\Microsoft.Exchange.WebServices.dll"
+$Credentials = New-Object Microsoft.Exchange.WebServices.Data.WebCredentials("test1","test123!")
+$exchService = New-Object Microsoft.Exchange.WebServices.Data.ExchangeService
+$exchService.Credentials = $Credentials
+$exchService.AutodiscoverUrl("test1@test.com")
+$exchService
+$inbox = [Microsoft.Exchange.WebServices.Data.Folder]::Bind($exchService,[Microsoft.Exchange.WebServices.Data.WellKnownFolderName]::Inbox)
+$inbox|gm
+$ms = $inbox.FindItems(10) 
+foreach ($m in $ms)
+{
+$m.Load()
+$m.subject
+}
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>Powershell同样需要<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.WebServices.dll</code></p>
+
+<p>在程序开发中需要注意的细节如下：</p>
+
+<h4 id="1exchange-server的证书不可信">1.Exchange Server的证书不可信</h4>
+
+<p>这会导致通过IE访问时显示证书不可信，需要点击Continue才能正常访问，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-11-7/3-1.png" alt="Alt text" /></p>
+
+<p>程序实现时会产生错误，提示如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>The underlying connection was closed. Could not establish a secure SSL/TLS connection
+</code></pre></div></div>
+
+<p>可以通过添加证书信任策略避免这个问题：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System.Net;
+ServicePointManager.ServerCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) =&gt; { return true; };
+</code></pre></div></div>
+
+<h4 id="2autodiscover自动发现服务">2.Autodiscover自动发现服务</h4>
+
+<p>用来简化用户配置过程，具体到程序实现上对应<code class="language-plaintext highlighter-rouge">ExchangeService.AutodiscoverUrl</code></p>
+
+<p>参考地址：</p>
+
+<p>https://msdn.microsoft.com/en-us/library/office/dd634273(v=exchg.80).aspx</p>
+
+<p>输入邮箱地址，自动解析出Exchange Server Url</p>
+
+<p>用法举例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ExchangeService service = new ExchangeService(ExchangeVersion.Exchange2013_SP1);
+service.AutodiscoverUrl("test1@test.com", RedirectionUrlValidationCallback);
+</code></pre></div></div>
+
+<p>等价于</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ExchangeService service = new ExchangeService(ExchangeVersion.Exchange2013_SP1);
+service.Url = new Uri("https://test.com/ews/Exchange.asmx");
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>实际使用时，如果Exchange Server关闭Autodiscover自动发现服务，可以选择指定Url</p>
+
+<h4 id="3net-framework-4-and-net-framework-35">3..NET Framework 4 and .NET Framework 3.5</h4>
+
+<p>.NET Framework 4为推荐开发环境</p>
+
+<p>Win7系统默认为.NET Framework 3.5，不支持.NET Framework 4</p>
+
+<p>为了支持Win7，将工程指定为.NET Framework 3.5，不影响EWS Managed API的使用</p>
+
+<h4 id="4明文读取邮件的body属性">4.明文读取邮件的body属性</h4>
+
+<p>读取邮件的body属性时(也就是获得邮件的内容)，默认输出格式为htlm</p>
+
+<p>想要获得邮件的内容，需要将输出格式改为Text</p>
+
+<p>解决方法：</p>
+
+<p>https://stackoverflow.com/questions/11243911/ews-body-plain-text</p>
+
+<h4 id="5搜索自定义文件夹时指定深度搜索遍历所有文件夹包括更深的目录">5.搜索自定义文件夹时，指定深度搜索（遍历所有文件夹，包括更深的目录）</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>FindFoldersResults findResults = null;
+FolderView view = new FolderView(int.MaxValue) { Traversal = FolderTraversal.Deep };
+</code></pre></div></div>
+
+<h4 id="6编译后仍需要依赖文件">6.编译后仍需要依赖文件</h4>
+
+<p>编译后的程序在执行时，仍需要依赖文件<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.WebServices.dll</code>(在同级目录)</p>
+
+<h2 id="0x04-使用ews-soap-xml-message">0x04 使用EWS SOAP XML message</h2>
+<hr />
+
+<p>官方资料：</p>
+
+<p>https://docs.microsoft.com/en-us/exchange/client-developer/exchange-web-services/get-started-with-ews-client-applications</p>
+
+<p>EWS请求和响应使用SOAP(Simple Object Access Protocol)协议</p>
+
+<p>SOAP消息格式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;SOAP-ENV:Envelope各种属性&gt;
+　&lt;SOAP:HEADER&gt;
+　&lt;/SOAP:HEADER&gt;
+　&lt;SOAP:Body&gt;
+　&lt;/SOAP:Body&gt;
+&lt;/SOAP-ENV:Envelope&gt;
+</code></pre></div></div>
+
+<p>对应EWS的结构：</p>
+
+<ul>
+  <li>Envelope元素（必须），作为SOAP消息的标志</li>
+  <li>Header元素（可选），可用来指定ExchangeServer的版本</li>
+  <li>Body元素（必须），包含所有的调用和响应信息</li>
+  <li>Fault 元素（可选），包含错误消息</li>
+</ul>
+
+<p>C Sharp代码示例（发送邮件）：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Net;
+using System.IO;
+using System.Text;
+namespace EMAIL_EWS
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            String user = "test1";
+            String password = "test123!";
+            String readPath = ""
+            ServicePointManager.ServerCertificateValidationCallback = (sender, certificate, chain, sslPolicyErrors) =&gt; { return true; };          
+            StreamReader sendData = new StreamReader("ews.xml", Encoding.Default);
+            byte[] sendDataByte = Encoding.UTF8.GetBytes(sendData.ReadToEnd());
+            sendData.Close();
+            try
+            {
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create("https://test.com/ews/Exchange.asmx");
+                request.Method = "POST";
+                request.ContentType = "text/xml";
+                request.ContentLength = sendDataByte.Length;
+                request.AllowAutoRedirect = false;
+                request.Credentials = new NetworkCredential(user, password);
+                Stream requestStream = request.GetRequestStream();
+                requestStream.Write(sendDataByte, 0, sendDataByte.Length);
+                requestStream.Close();
+
+                HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+                if (response.StatusCode != HttpStatusCode.OK)
+                {
+                    throw new WebException(response.StatusDescription);
+                }
+                Stream receiveStream = response.GetResponseStream();
+                
+                StreamReader readStream = new StreamReader(receiveStream, Encoding.UTF8);
+
+                String receiveString = readStream.ReadToEnd();
+                response.Close();
+                readStream.Close();
+
+                StreamWriter receiveData = new StreamWriter("out.xml");
+                receiveData.Write(receiveString);                         
+                receiveData.Close();                                        
+            }
+            catch (WebException e)
+            {
+                Console.WriteLine("[!]{0}", e.Message);
+                Environment.Exit(0);
+            }
+            Console.WriteLine("[+]Done");
+        }
+    }
+}
+</code></pre></div></div>
+
+<p>代码读取文件ems.xml的内容并进行发送，将结果保存为out.xml</p>
+
+<p>ems.xml的内容为发送邮件：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+               xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" 
+               xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types" 
+               xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"&gt;
+  &lt;soap:Header&gt;
+    &lt;t:RequestServerVersion Version="Exchange2013_SP1" /&gt;
+  &lt;/soap:Header&gt;
+  &lt;soap:Body&gt;
+    &lt;m:CreateItem MessageDisposition="SendAndSaveCopy"&gt;
+      &lt;m:SavedItemFolderId&gt;
+        &lt;t:DistinguishedFolderId Id="sentitems" /&gt;
+      &lt;/m:SavedItemFolderId&gt;
+      &lt;m:Items&gt;
+        &lt;t:Message&gt;
+          &lt;t:Subject&gt;This is Subject&lt;/t:Subject&gt;
+          &lt;t:Body BodyType="HTML"&gt;This is Body&lt;/t:Body&gt;
+          &lt;t:ToRecipients&gt;
+            &lt;t:Mailbox&gt;
+              &lt;t:EmailAddress&gt;test1@test.com&lt;/t:EmailAddress&gt;
+              &lt;/t:Mailbox&gt;
+          &lt;/t:ToRecipients&gt;
+        &lt;/t:Message&gt;
+      &lt;/m:Items&gt;
+    &lt;/m:CreateItem&gt;
+  &lt;/soap:Body&gt;
+&lt;/soap:Envelope&gt;
+</code></pre></div></div>
+
+<p>返回的内容(out.xml)如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-11-7/3-2.png" alt="Alt text" /></p>
+
+<p><code class="language-plaintext highlighter-rouge">ResponseCode</code>为<code class="language-plaintext highlighter-rouge">NoError</code>，表示操作成功</p>
+
+<p><strong>注：</strong></p>
+
+<p>以上代码并不需要依赖文件<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.WebServices.dll</code></p>
+
+<p>当然，如果需要使用Autodiscover自动发现服务，还是需要依赖文件<code class="language-plaintext highlighter-rouge">Microsoft.Exchange.WebServices.dll</code></p>
+
+<h2 id="0x05-开源实现代码ewsmanage">0x05 开源实现代码ewsManage</h2>
+<hr />
+
+<p>我将以上两种方法整合到一个工程，并添加了更多实用的功能，代码下载地址：</p>
+
+<p>https://github.com/3gstudent/ewsManage</p>
+
+<p>目前支持以下功能：</p>
+
+<ul>
+  <li>支持EWS Managed API和EWS SOAP</li>
+  <li>支持使用用户名口令或者使用当前凭据登录邮箱</li>
+  <li>支持是否忽略不可信证书</li>
+  <li>列出指定位置的邮件，包括附件中的文件名称和邮件内容
+（对邮件内容长度做判断，如果大于100个字符，只显示前100个字符的内容）</li>
+  <li>列出指定位置的未读邮件，包括附件中的文件名称和邮件内容
+（对邮件内容长度做判断，如果大于100个字符，只显示前100个字符的内容）</li>
+  <li>列出指定位置中的自定义文件夹（遍历所有子文件夹）</li>
+  <li>查看自定义文件下的所有邮件</li>
+  <li>查看自定义文件下的未读邮件</li>
+  <li>保存指定位置中的所有邮件(格式为eml)</li>
+  <li>保存指定邮件中的附件（指定ID）</li>
+  <li>向指定邮件添加附件（指定ID）</li>
+  <li>删除指定邮件的附件（指定ID）</li>
+  <li>删除指定邮件的所有附件</li>
+  <li>搜索带有指定关键词的邮件（常见位置，搜索标题名，附件名称和邮件正文）</li>
+  <li>删除指定邮件（指定ID）</li>
+  <li>查看某个邮件的具体内容（指定ID）</li>
+  <li>发送邮件(使用EWS SOAP)</li>
+  <li>读取xml文件，通过EWS SOAP发送命令</li>
+</ul>
+
+<p>支持查询和操作的位置：</p>
+
+<ul>
+  <li>收件箱(Inbox)</li>
+  <li>草稿(Drafts)</li>
+  <li>已发送邮件(SentItems)</li>
+  <li>已删除邮件(DeletedItems)</li>
+  <li>发件箱(Outbox)</li>
+  <li>垃圾邮件(JunkEmail)</li>
+</ul>
+
+<p>用法示例：</p>
+
+<p>(1)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation Yes -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ListUnreadMail -Folder Inbox
+</code></pre></div></div>
+
+<p>使用证书验证，使用URL登录，查看收件箱的所有未读邮件，输出以下邮件信息：</p>
+
+<ul>
+  <li>Subject</li>
+  <li>HasAttachments</li>
+  <li>ItemId</li>
+  <li>DateTimeCreated</li>
+  <li>DateTimeReceived</li>
+  <li>DateTimeSent</li>
+  <li>DisplayCc:</li>
+  <li>DisplayTo</li>
+  <li>InReplyTo:</li>
+  <li>Size</li>
+  <li>MessageBody（如果大于100个字符，只显示前100个字符的内容）</li>
+</ul>
+
+<p>(2)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -use the default credentials -AutodiscoverUrl test1@test.com -Mode ListMail -Folder SentItems
+</code></pre></div></div>
+
+<p>忽略证书验证，使用当前凭据自动登录，调用Autodiscover自动发现服务，查看所有已发送邮件的信息，输出的信息类别同(1)</p>
+
+<p><strong>注：</strong></p>
+
+<p>可以配合mimikatz的Overpass-the-hash，实现通过hash登录Exchange</p>
+
+<p>(3)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ListFolder -Folder Inbox
+</code></pre></div></div>
+
+<p>忽略证书验证，使用URL登录，查看收件箱中所有自定义文件夹的信息，输出以下信息：</p>
+
+<ul>
+  <li>DisplayName</li>
+  <li>Id</li>
+  <li>TotalCount（该自定义文件夹下邮件的数量）</li>
+</ul>
+
+<p>(4)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ListMailofFolder -Id AAMaADFlMjRjMdM2LTgxZTUtNGRmZC05ZDQyLTMzNDFlMzBmZWY1NwAzAAAAAAAR9UOK286vT6HjUgukBQGmAQBHzR2O8KNmTcffGwlY0A76AAAAADfqAAA=
+</code></pre></div></div>
+
+<p>查看指定自定义文件夹（通过Id筛选）中的所有邮件，输出的信息类别同(1)</p>
+
+<p>(5)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ExportMail -Folder Inbox
+</code></pre></div></div>
+
+<p>将收件箱的所有邮件保存为eml文件</p>
+
+<p>(6)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode SaveAttachment -Id AAMzADFlMjRjMzM3LTgxZTUzNGRmZC25ZDQyLTMaNDFlMzBwZWY1NwBGAAAAAAAR8UOK236vT6HjUnujBQGmBwBHzR1O8KNmTrjfGwlY0A56AAAAAAEKAABHzR1O8KNmTrjfGzlY2A75AAAAABxFAAA=
+</code></pre></div></div>
+
+<p>保存指定邮件（通过Id筛选）中的附件，输出路径为当前路径</p>
+
+<p>(7)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode AddAttachment -Id AAMzADFlMjRjMzM3LTgxZTUzNGRmZC25ZDQyLTMaNDFlMzBwZWY1NwBGAAAAAAAR8UOK236vT6HjUnujBQGmBwBHzR1O8KNmTrjfGwlY0A56AAAAAAEKAABHzR1O8KNmTrjfGzlY2A75AAAAABxFAAA= -AttachmentFile 1.txt
+</code></pre></div></div>
+
+<p>向指定邮件（通过Id筛选）添加附件，附件名称为1.txt</p>
+
+<p>(8)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode DeleteAttachment -Id AAMzADFlMjRjMzM3LTgxZTUzNGRmZC25ZDQyLTMaNDFlMzBwZWY1NwBGAAAAAAAR8UOK236vT6HjUnujBQGmBwBHzR1O8KNmTrjfGwlY0A56AAAAAAEKAABHzR1O8KNmTrjfGzlY2A75AAAAABxFAAA= -AttachmentFile 1.txt
+</code></pre></div></div>
+
+<p>删除指定邮件（通过Id筛选）中的某个附件，附件名称为1.txt</p>
+
+<p>(9)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ClearAllAttachment -Id AAMzADFlMjRjMzM3LTgxZTUzNGRmZC25ZDQyLTMaNDFlMzBwZWY1NwBGAAAAAAAR8UOK236vT6HjUnujBQGmBwBHzR1O8KNmTrjfGwlY0A56AAAAAAEKAABHzR1O8KNmTrjfGzlY2A75AAAAABxFAAA=
+</code></pre></div></div>
+
+<p>删除指定邮件（通过Id筛选）中的所有附件</p>
+
+<p>(10)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode SearchMail -String vpn
+</code></pre></div></div>
+
+<p>搜索带有指定关键词为vpn的邮件</p>
+
+<p>文件夹位置：</p>
+
+<ul>
+  <li>收件箱(Inbox)</li>
+  <li>草稿(Drafts)</li>
+  <li>已发送邮件(SentItems)</li>
+  <li>已删除邮件(DeletedItems)</li>
+  <li>发件箱(Outbox)</li>
+  <li>垃圾邮件(JunkEmail)</li>
+</ul>
+
+<p>邮件位置：</p>
+
+<ul>
+  <li>标题名(Subject)</li>
+  <li>附件名称(AttachmentName)</li>
+  <li>邮件正文(Body)</li>
+</ul>
+
+<p>(11)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode DeleteMail -Id AAMzADFlMjRjMzM3LTgxZTUzNGRmZC25ZDQyLTMaNDFlMzBwZWY1NwBGAAAAAAAR8UOK236vT6HjUnujBQGmBwBHzR1O8KNmTrjfGwlY0A56AAAAAAEKAABHzR1O8KNmTrjfGzlY2A75AAAAABxFAAA=
+</code></pre></div></div>
+
+<p>完全删除指定邮件（通过Id筛选）</p>
+
+<p>(12)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ViewMail -Id AAMzADFlMjRjMzM3LTgxZTUzNGRmZC25ZDQyLTMaNDFlMzBwZWY1NwBGAAAAAAAR8UOK236vT6HjUnujBQGmBwBHzR1O8KNmTrjfGwlY0A56AAAAAAEKAABHzR1O8KNmTrjfGzlY2A75AAAAABxFAAA=
+</code></pre></div></div>
+
+<p>查看某个邮件的具体内容（指定ID）,包括完整的正文内容</p>
+
+<p>(13)</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ewsManage.exe -CerValidation No -ExchangeVersion Exchange2013_SP1 -u test1 -p test123! -ewsPath https://test.com/ews/Exchange.asmx -Mode ReadXML -Path ews.xml
+</code></pre></div></div>
+
+<p>读取ews.xml文件中的命令，通过EWS SOAP发送</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了两种访问Exchange资源的方法，开源工程ewsManage，便于后续的二次开发。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

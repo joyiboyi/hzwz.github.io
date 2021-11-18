@@ -1,0 +1,236 @@
+I"�&<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>SharpSniper用于在域环境中找到指定域用户的IP地址，需要具有读取域控制器日志的权限，地址：https://github.com/HunnicCyber/SharpSniper</p>
+
+<p>本文将要对SharpSniper的实现原理进行分析，扩展用法，分别介绍如何使用wevtutil.exe和powershell脚本实现相同的功能，分享其中需要注意的细节。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>SharpSniper实现原理</li>
+  <li>使用wevtutil实现</li>
+  <li>使用powershell实现</li>
+</ul>
+
+<h2 id="0x02-sharpsniper实现原理">0x02 SharpSniper实现原理</h2>
+<hr />
+
+<p>通过查询域控制器上的用户登录日志(Event ID:4624)，获得域用户使用过的IP地址</p>
+
+<p>具体实现如下：</p>
+
+<h3 id="1通过查询日志获得域用户使用过的ip">1.通过查询日志获得域用户使用过的IP</h3>
+
+<p>XPath查询条件(以查询用户testb为例)：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"Event[System[(EventID=4624)] and EventData[Data[@Name='TargetUserName']='testb']]"
+</code></pre></div></div>
+
+<p>对应代码地址：
+https://github.com/HunnicCyber/SharpSniper/blob/master/QueryDC.cs#L16</p>
+
+<h3 id="2通过正则表达式过滤出域用户使用过的ip">2.通过正则表达式过滤出域用户使用过的IP</h3>
+
+<p>正则表达式：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
+</code></pre></div></div>
+
+<ul>
+  <li>\b表示单词的前或后边界</li>
+  <li>\d{1,3}表示字符个数在1到3位之间</li>
+  <li>.表示匹配字符”.”</li>
+</ul>
+
+<p>对应代码地址：</p>
+
+<p>https://github.com/HunnicCyber/SharpSniper/blob/master/Program.cs#L54</p>
+
+<h2 id="0x03-使用wevtutil实现">0x03 使用wevtutil实现</h2>
+<hr />
+
+<h3 id="1查询指定用户以查询用户testb为例的登录日志">1.查询指定用户(以查询用户testb为例)的登录日志</h3>
+
+<p>cmd命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wevtutil qe security /format:text /q:"Event[System[(EventID=4624)] and EventData[Data[@Name='TargetUserName']='testb']]"
+</code></pre></div></div>
+
+<p>包括每条日志的详细信息，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/2-1.png" alt="Alt text" /></p>
+
+<h3 id="2从详细信息中提取出ip">2.从详细信息中提取出ip</h3>
+
+<p>这里可以借助<code class="language-plaintext highlighter-rouge">find</code>命令进行筛选</p>
+
+<p>cmd命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wevtutil qe security /format:text /q:"Event[System[(EventID=4624)] and EventData[Data[@Name='TargetUserName']='testb']]"|find "Source Network Address"
+</code></pre></div></div>
+
+<p>筛选后的结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/2-2.png" alt="Alt text" /></p>
+
+<p>从日志中提取出用户testb使用过的所有IP地址</p>
+
+<h3 id="补充xpath查询条件的编写">补充：XPath查询条件的编写</h3>
+
+<p>可以使用Event Viewer自动生成需要的XPath语句</p>
+
+<p>1.打开Event Viewer</p>
+
+<p>cmd执行：<code class="language-plaintext highlighter-rouge">eventvwr.msc</code></p>
+
+<p>2.选择<code class="language-plaintext highlighter-rouge">Create Custom View..</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/3-1.png" alt="Alt text" /></p>
+
+<p>3.设置查询条件后选择XML标签</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/3-2.png" alt="Alt text" /></p>
+
+<p>自动生成需要的XPath语句，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/3-3.png" alt="Alt text" /></p>
+
+<p>4.使用wevtutil调用查询语句的两种方法</p>
+
+<p>(1)按照/q参数的格式进行修改</p>
+
+<p>需要提取自动生成的XPath语句中Select标签中的内容</p>
+
+<p>(2)通过读取文件调用查询</p>
+
+<p>直接使用自动生成的XPath语句</p>
+
+<p>将步骤3中的查询语句保存到文件，例如custom1.xml</p>
+
+<p>读取文件调用查询的命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wevtutil qe custom1.xml /sq:true /rd:true /f:text
+</code></pre></div></div>
+
+<h2 id="0x04-使用powershell实现">0x04 使用powershell实现</h2>
+<hr />
+
+<h3 id="1查询指定用户以查询用户testb为例的登录日志-1">1.查询指定用户(以查询用户testb为例)的登录日志</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-WinEvent -LogName "security" -FilterXPath "Event[System[(EventID=4624)] and EventData[Data[@Name='TargetUserName']='testb']]"|Format-List
+</code></pre></div></div>
+
+<p>包括每条日志的详细信息，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/4-1.png" alt="Alt text" /></p>
+
+<h3 id="2从详细信息中提取出ip的三种方法">2.从详细信息中提取出ip的三种方法</h3>
+
+<h4 id="1使用find命令">(1)使用find命令</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-WinEvent -LogName "security" -FilterXPath "Event[System[(EventID=4624)] and EventData[Data[@Name='TargetUserName']='testb']]"|Format-List|find "Source Network Address"
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/4-2.png" alt="Alt text" /></p>
+
+<h4 id="2通过正则表达式进行过滤">(2)通过正则表达式进行过滤</h4>
+
+<p>第一种实现方法：</p>
+
+<p>使用SharpSniper中的正则表达式，对应的powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$events = Get-WinEvent -LogName "security" -FilterXPath "Event[System[(EventID=4624)] and EventData[Data[@Name='TargetUserName']='testb']]"
+$i=0
+while ($i -lt $events.length) {
+    $IP=[regex]::matches($events[$i].Message, '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b')
+    Write-Host $IP
+    $i++
+}
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/4-3.png" alt="Alt text" /></p>
+
+<p>第二种实现方法：</p>
+
+<p>搜索关键词<code class="language-plaintext highlighter-rouge">"Source Network Address:"</code>，对应的powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$events = Get-WinEvent -LogName "security" -FilterXPath "Event[System[(EventID=4624)] and EventData[Data[@Name='TargetUserName']='testb']]"
+$i=0
+while ($i -lt $events.length) {
+    $IP=[regex]::matches($events[$i].Message, 'Source Network Address:(.+)') | %{$_.Groups[1].Value.Trim()}
+    Write-Host $IP
+    $i++
+}
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/4-4.png" alt="Alt text" /></p>
+
+<h4 id="3先转换成xml格式再进行筛选">(3)先转换成xml格式，再进行筛选</h4>
+
+<p>在输出时，只有Message列，无法选择只输出”Source Network Address”的内容</p>
+
+<p>这里如果将输出内容转换为xml格式，<code class="language-plaintext highlighter-rouge">"Source Network Address"</code>对应的列为<code class="language-plaintext highlighter-rouge">ipaddress</code></p>
+
+<p>参考资料：</p>
+
+<p>https://blog.51cto.com/beanxyz/1695288</p>
+
+<p>对应的powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$Events = Get-WinEvent -LogName "security" -FilterXPath "Event[System[(EventID=4624)] and EventData[Data[@Name='TargetUserName']='testb']]"     
+ForEach ($Event in $Events) {       
+  $eventXML = [xml]$Event.ToXml()         
+  For ($i=0; $i -lt $eventXML.Event.EventData.Data.Count; $i++) {   
+    Add-Member -InputObject $Event -MemberType NoteProperty -Force -Name $eventXML.Event.EventData.Data[$i].name -Value $eventXML.Event.EventData.Data[$i].'#text'     
+  }       
+}       
+$events|select ipaddress
+</code></pre></div></div>
+
+<p>结果如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-16/4-5.png" alt="Alt text" /></p>
+
+<h3 id="补充使用powershell调用自动生成的xpath查询条件">补充：使用powershell调用自动生成的XPath查询条件</h3>
+
+<p>参照0x03中的内容，使用Event Viewer自动生成需要的XPath语句</p>
+
+<p>直接保存在变量<code class="language-plaintext highlighter-rouge">$xml</code>中并进行调用，对应的powershell命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$xml = @'
+
+&lt;QueryList&gt;
+  &lt;Query Id="0" Path="Security"&gt;
+    &lt;Select Path="Security"&gt;*[System[(EventID=4624) and TimeCreated[timediff(@SystemTime) &amp;lt;= 604800000]]]&lt;/Select&gt;
+  &lt;/Query&gt;
+&lt;/QueryList&gt;
+
+'@
+
+Get-WinEvent -FilterXml $xml
+</code></pre></div></div>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文分析了SharpSniper的实现原理，扩展用法，分别介绍如何使用wevtutil.exe和powershell脚本实现相同的功能，可以用来获取域环境中关键用户使用过的IP。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

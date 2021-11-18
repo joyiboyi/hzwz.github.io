@@ -1,0 +1,298 @@
+I"1,<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>VMware vCenter Server是VMware虚拟化管理平台，广泛的应用于企业私有云内网中。站在渗透测试工具开发的角度，我们需要通过命令行实现vCenter Server同虚拟机的交互。</p>
+
+<p>本系列文章将要比较多种不同的API，介绍实现细节，开源代码，实现以下功能：</p>
+
+<ul>
+  <li>读取虚拟机的配置</li>
+  <li>查看虚拟机文件</li>
+  <li>删除虚拟机文件</li>
+  <li>向虚拟机上传文件</li>
+  <li>从虚拟机下载文件</li>
+  <li>在虚拟机中执行命令</li>
+</ul>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>基础知识</li>
+  <li>vSphere Automation API开发细节</li>
+  <li>开源代码vSphereAutomationAPI_Manage.py</li>
+</ul>
+
+<h2 id="0x02-基础知识">0x02 基础知识</h2>
+<hr />
+
+<h3 id="1vmware-vsphere">1.VMware vSphere</h3>
+
+<p>VMware vSphere是整个VMware套件的商业名称，而不是特定的产品或软件</p>
+
+<p>VMware vSphere的两个核心组件是ESXi服务器和vCenter Server</p>
+
+<h3 id="2esxi">2.ESXi</h3>
+
+<p>ESXi是hypervsior，可以在其中创建和运行虚拟机和虚拟设备。</p>
+
+<h3 id="3vcenter-server">3.vCenter Server</h3>
+
+<p>vCenter Server是用于管理网络中连接的多个ESXi主机和池主机资源的服务</p>
+
+<p>vCenter Server可安装至Linux系统中，通过安装vCenter Server Appliance(VCSA)实现</p>
+
+<p>vCenter Server也可安装至Windows系统中，通过安装Vmware Integrated Management(VIM)实现</p>
+
+<h2 id="0x03-vsphere-automation-api开发细节">0x03 vSphere Automation API开发细节</h2>
+<hr />
+
+<p>官方文档：</p>
+
+<p>https://developer.vmware.com/docs/vsphere-automation/latest/</p>
+
+<p>为了能够通过命令行实现vCenter Server同虚拟机的交互，我们需要使用vSphere Automation API中的vSphere REST API部分</p>
+
+<p>VMware在vSphere 6.0版本中引入了REST API，从vSphere7.0U2开始，VMware宣布弃用旧的REST API，使用新的REST API</p>
+
+<p>参考资料：</p>
+
+<p>https://core.vmware.com/blog/vsphere-7-update-2-rest-api-modernization</p>
+
+<p>经过对比，发现旧的REST API(低于vSphere7.0U2)不支持以下操作：</p>
+
+<ul>
+  <li>查看虚拟机文件</li>
+  <li>删除虚拟机文件</li>
+  <li>向虚拟机上传文件</li>
+  <li>从虚拟机下载文件</li>
+  <li>在虚拟机中执行命令</li>
+</ul>
+
+<p>而新的REST API能够满足需求，所以在开发上我们需要先对vCenter的版本进行判断，如果满足要求(不低于vSphere7.0U2)，那么才使用vSphere Automation API</p>
+
+<h3 id="1已有的开源代码">1.已有的开源代码</h3>
+
+<p>https://github.com/vmware/vsphere-automation-sdk-python/</p>
+
+<p>vSphere Automation Python SDK示例</p>
+
+<p>在<code class="language-plaintext highlighter-rouge">/samples/vsphere/vcenter/vm</code>文件夹下有可供参考的实现代码</p>
+
+<p>其中，<code class="language-plaintext highlighter-rouge">samples/vsphere/vcenter/vm/guest/guest_ops.py</code>实现了在虚拟机中执行命令</p>
+
+<p>测试环境1：192.168.1.1(vCenter 6.7.0)</p>
+
+<p>Windows环境加载该脚本的示例命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd /vsphere-automation-sdk-python-master/
+set PYTHONPATH=%cd%;%PYTHONPATH%
+python samples/vsphere/vcenter/vm/guest/guest_ops.py -s 192.168.1.1 -u administrator@vsphere.local -p Password1 --skipverification --vm_name "Linux1" --root_user root --root_passwd Password2
+</code></pre></div></div>
+
+<p>脚本执行失败，提示如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>com.vmware.vapi.std.errors_client.OperationNotFound: {messages : [LocalizableMessage(id='vapi.method.input.invalid.interface', default_message="Cannot find service 'com.vmware.vcenter.vm.guest.filesystem.directories'.", args=['com.vmware.vcenter.vm.guest.filesystem.directories'], params=None, localized=None)], data : None, error_type : OPERATION_NOT_FOUND}
+</code></pre></div></div>
+
+<p>测试环境2：192.168.1.2(vCenter 7.0.2)</p>
+
+<p>Windows环境加载该脚本的示例命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd /vsphere-automation-sdk-python-master/
+set PYTHONPATH=%cd%;%PYTHONPATH%
+python samples/vsphere/vcenter/vm/guest/guest_ops.py -s 192.168.1.2 -u administrator@vsphere.local -p Password1 --skipverification --vm_name "Linux1" --root_user root --root_passwd Password2
+</code></pre></div></div>
+
+<p>脚本执行成功</p>
+
+<p>经过更多的测试后，印证结论：vSphere Automation API在低版本(低于vSphere7.0U2)无法实现以下操作：</p>
+
+<ul>
+  <li>查看虚拟机文件</li>
+  <li>删除虚拟机文件</li>
+  <li>向虚拟机上传文件</li>
+  <li>从虚拟机下载文件</li>
+  <li>在虚拟机中执行命令</li>
+</ul>
+
+<h3 id="2参考文档用原始数据包实现">2.参考文档用原始数据包实现</h3>
+
+<p>参考文档：</p>
+
+<p>https://developer.vmware.com/docs/vsphere-automation/latest/vcenter/</p>
+
+<p>在实现上，首先需要发送用户名和明文口令获得Session，使用Session作为登录凭据，进行后续的操作</p>
+
+<p>具体实现细节如下：</p>
+
+<h4 id="1判断vcenter的版本">(1)判断vCenter的版本</h4>
+
+<p>获得粗略版本的方法：</p>
+
+<p>浏览器访问： <code class="language-plaintext highlighter-rouge">https://&lt;server_hostname&gt;/sdk/vimServiceVersions.xml</code></p>
+
+<p>返回结果为xml数据，无法获得具体的版本</p>
+
+<p>获得详细号版本的方法：</p>
+
+<p>访问：<code class="language-plaintext highlighter-rouge">https://&lt;server_hostname&gt;/sdk/</code></p>
+
+<p>正文内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;env:Envelope xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:env="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"&gt;
+      &lt;env:Body&gt;
+      &lt;RetrieveServiceContent xmlns="urn:vim25"&gt;
+        &lt;_this type="ServiceInstance"&gt;ServiceInstance&lt;/_this&gt;
+      &lt;/RetrieveServiceContent&gt;
+      &lt;/env:Body&gt;
+      &lt;/env:Envelope&gt;
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>vSphere 7.0U2对应对build属性为17630552</p>
+
+<h4 id="2create_session">(2)Create_Session</h4>
+
+<p>添加Header：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQ=
+</code></pre></div></div>
+
+<p>其中，<code class="language-plaintext highlighter-rouge">dXNlcm5hbWU6cGFzc3dvcmQ</code>为<code class="language-plaintext highlighter-rouge">username:password</code>作Base64编码后的结果</p>
+
+<p>返回结果格式：响应码201，格式为application/json类型</p>
+
+<h4 id="3list_guest_processes">(3)List_Guest_Processes</h4>
+
+<p>请求正文需要json格式的数据作为凭据，用来登录虚拟机</p>
+
+<p>格式示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>{
+    "credentials":
+    {
+        "interactive_session":False,
+        "type":"USERNAME_PASSWORD",
+        "password":"Password123",
+        "saml_token":None,
+        "user_name":"test1"
+    }
+}
+</code></pre></div></div>
+
+<h4 id="4vcenter同虚拟机传输文件">(4)vCenter同虚拟机传输文件</h4>
+
+<p>参考文档：</p>
+
+<p>https://developer.vmware.com/docs/vsphere-automation/latest/vcenter/api/vcenter/vm/vm/guest/filesystemactioncreate/post/</p>
+
+<p>官方文档描述的不够详细</p>
+
+<p>这里给出我经过测试得出的结论：</p>
+
+<p>1.将文件从本地发送至虚拟机，即向虚拟机发送该文件，先调用<code class="language-plaintext highlighter-rouge">Create_Temporary_Guest_Filesystem_Files</code>创建指定文件对应的uri</p>
+
+<p>发送的内容格式如下;</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>data =  {
+            "credentials":
+            {
+                "interactive_session":False,
+                "type":"USERNAME_PASSWORD",                    
+                "saml_token":None,
+                "user_name":guest_user_name,
+                "password":guest_user_password
+            },
+            "spec": 
+            {
+                "path": path
+            }
+        }
+</code></pre></div></div>
+
+<p>不带有size属性</p>
+
+<p>发送成功后返回该文件对应的uri，使用PUT方法访问uri，data字段为发送的文件内容</p>
+
+<p>2.将该文件从虚拟机发送至本地，即读取虚拟机中的文件，先调用<code class="language-plaintext highlighter-rouge">Create_Temporary_Guest_Filesystem_Files</code>创建指定文件对应的uri</p>
+
+<p>发送的内容格式如下;</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>data =  {
+            "credentials":
+            {
+                "interactive_session":False,
+                "type":"USERNAME_PASSWORD",                    
+                "saml_token":None,
+                "user_name":guest_user_name,
+                "password":guest_user_password
+            },
+            "spec": 
+            {
+                "path": path,
+                "attributes": 
+                {
+                    "overwrite": True,
+                    "size": size,
+                }
+            }
+        }
+</code></pre></div></div>
+
+<p>必须带有size属性</p>
+
+<p>发送成功后返回该文件对应的uri，使用GET方法访问uri，在获取文件内容时需要区分文本格式和二进制格式，文本格式可以使用r.text读取，二进制格式可以使用r.content读取</p>
+
+<h2 id="0x04-开源代码">0x04 开源代码</h2>
+<hr />
+
+<p>完整的开源代码已上传至github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Python/blob/master/vSphereAutomationAPI_Manage.py</p>
+
+<p>代码适用版本：vSphere 7.0U1+</p>
+
+<p>支持以下功能：</p>
+
+<ul>
+  <li>读取虚拟机的配置</li>
+  <li>查看虚拟机文件</li>
+  <li>删除虚拟机文件</li>
+  <li>向虚拟机上传文件</li>
+  <li>从虚拟机下载文件</li>
+  <li>在虚拟机中执行命令</li>
+</ul>
+
+<p>具体命令如下：</p>
+
+<ul>
+  <li>ListVM</li>
+  <li>GetVMConfig</li>
+  <li>ListHost</li>
+  <li>ListVMProcess</li>
+  <li>CreateVMProcess</li>
+  <li>KillVMProcess</li>
+  <li>ListVMFolder</li>
+  <li>DeleteVMFile</li>
+  <li>DownloadFileFromVM</li>
+  <li>UploadFileToVM</li>
+</ul>
+
+<p>其中，对于虚拟机的操作，支持Windows和Linux系统</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了通过vSphere Automation API实现vCenter Server同虚拟机交互的方法，开源实现代码vSphereAutomationAPI_Manage.py，记录开发细节。</p>
+
+<p>对于vSphere Automation API，有些操作不支持低版本的vCenter(&lt;vSphere7.0U2)，导致通用性不够，所以下篇文章将要介绍更为通用的实现方法。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

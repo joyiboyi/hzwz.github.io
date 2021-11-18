@@ -1,0 +1,414 @@
+I"�9<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Cobalt Strike 3.11中，加入了一个名为”execute-assembly”的命令，能够从内存中加载.NET程序集。这个功能不需要向硬盘写入文件，十分隐蔽，而且现有的Powershell利用脚本能够很容易的转换为C#代码，十分方便。</p>
+
+<p>本文将会对”execute-assembly”的原理进行介绍，结合多个开源代码，介绍实现方法，分析利用思路，最后给出防御建议</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>基础知识</li>
+  <li>正常的实现方法</li>
+  <li>开源利用代码分析</li>
+  <li>利用思路</li>
+  <li>防御建议</li>
+</ul>
+
+<h2 id="0x02-基础知识">0x02 基础知识</h2>
+<hr />
+
+<h3 id="1clr">1.CLR</h3>
+
+<p>全称Common Language Runtime（公共语言运行库），是一个可由多种编程语言使用的运行环境</p>
+
+<p>CLR是.NET Framework的主要执行引擎，作用之一是监视程序的运行：</p>
+
+<ul>
+  <li>在CLR监视之下运行的程序属于”托管的”(managed)代码</li>
+  <li>不在CLR之下、直接在裸机上运行的应用或者组件属于”非托管的”(unmanaged)的代码</li>
+</ul>
+
+<h3 id="2unmanaged-api">2.Unmanaged API</h3>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/dotnet/framework/unmanaged-api/</p>
+
+<p>用于将.NET 程序集加载到任意程序中的API</p>
+
+<p>支持两种接口：</p>
+
+<ul>
+  <li>ICorRuntimeHost Interface</li>
+  <li>ICLRRuntimeHost Interface</li>
+</ul>
+
+<h3 id="3icorruntimehost-interface">3.ICorRuntimeHost Interface</h3>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/dotnet/framework/unmanaged-api/hosting/icorruntimehost-interface</p>
+
+<p>支持v1.0.3705, v1.1.4322, v2.0.50727和v4.0.30319</p>
+
+<h3 id="4iclrruntimehost-interface">4.ICLRRuntimeHost Interface</h3>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/dotnet/framework/unmanaged-api/hosting/iclrruntimehost-interface</p>
+
+<p>支持v2.0.50727和v4.0.30319</p>
+
+<p>在.NET Framework 2.0中，ICLRRuntimeHost用于取代ICorRuntimeHost</p>
+
+<p>在实际程序开发中，很少会考虑.NET Framework 1.0，所以两个接口都可以使用</p>
+
+<h2 id="0x03-正常的实现方法">0x03 正常的实现方法</h2>
+<hr />
+
+<p>使用的实例代码：</p>
+
+<p>https://code.msdn.microsoft.com/windowsdesktop/CppHostCLR-e6581ee0#content</p>
+
+<p>这里将参考实例代码并做补充</p>
+
+<p>通用的实现方法如下：</p>
+
+<h4 id="1将clr加载到进程中">1.将CLR加载到进程中</h4>
+
+<p>(1)调用CLRCreateInstance函数以获取ICLRMetaHost或ICLRMetaHostPolicy接口</p>
+
+<p>(2)调用ICLRMetaHost::EnumerateInstalledRuntimes, ICLRMetaHost::GetRuntime或者ICLRMetaHostPolicy::GetRequestedRuntime方法以获取有效的ICLRRuntimeInfo指针</p>
+
+<p>三个任选一个</p>
+
+<p>(3)使用ICorRuntimeHost或者ICLRRuntimeHost</p>
+
+<p>二者都是调用ICLRRuntimeInfo::GetInterface方法，但是参数不同</p>
+
+<p><strong>ICorRuntimeHost：</strong></p>
+
+<p>支持v1.0.3705, v1.1.4322, v2.0.50727和v4.0.30319</p>
+
+<p>指定CLSID_CorRuntimeHost为rclsid参数</p>
+
+<p>指定IID_ICorRuntimeHost为RIID参数</p>
+
+<p><strong>ICLRRuntimeHost：</strong></p>
+
+<p>支持v2.0.50727和v4.0.30319</p>
+
+<p>指定CLSID_CLRRuntimeHost为rclsid参数</p>
+
+<p>指定IID_ICLRRuntimeHost为RIID参数</p>
+
+<h4 id="2加载net程序集并调用静态方法">2.加载.NET程序集并调用静态方法</h4>
+
+<p>在代码实现上，使用ICLRRuntimeHost会比使用ICorRuntimeHost简单的多</p>
+
+<h4 id="3清理clr">3.清理CLR</h4>
+
+<p>释放步骤1中的指针</p>
+
+<p>下面使用ICLRMetaHost::GetRuntime获取有效的ICLRRuntimeInfo指针，使用ICLRRuntimeHost从文件加载.NET程序集并调用静态方法，实现代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#include "stdafx.h"
+#include &lt;metahost.h&gt;
+#include &lt;windows.h&gt;
+#pragma comment(lib, "MSCorEE.lib")
+
+HRESULT RuntimeHost_GetRuntime_ICLRRuntimeInfo(PCWSTR pszVersion, PCWSTR pszAssemblyName, PCWSTR pszClassName, PCWSTR pszMethodName, PCWSTR pszArgName)
+{
+	// Call the ICLRMetaHost::GetRuntime to get a valid ICLRRuntimeInfo.
+	// Call the ICLRRuntimeInfo:GetInterface method.
+	HRESULT hr;
+	ICLRMetaHost *pMetaHost = NULL;
+	ICLRRuntimeInfo *pRuntimeInfo = NULL;
+	ICLRRuntimeHost *pClrRuntimeHost = NULL;
+	DWORD dwLengthRet;
+	// 
+	// Load and start the .NET runtime.
+	// 
+	wprintf(L"Load and start the .NET runtime %s \n", pszVersion);
+	hr = CLRCreateInstance(CLSID_CLRMetaHost, IID_PPV_ARGS(&amp;pMetaHost));
+	if (FAILED(hr))
+	{
+		wprintf(L"[!]CLRCreateInstance failed w/hr 0x%08lx\n", hr);
+		goto Cleanup;
+	}
+	// Get the ICLRRuntimeInfo corresponding to a particular CLR version. It 
+	// supersedes CorBindToRuntimeEx with STARTUP_LOADER_SAFEMODE.
+	hr = pMetaHost-&gt;GetRuntime(pszVersion, IID_PPV_ARGS(&amp;pRuntimeInfo));
+	if (FAILED(hr))
+	{
+		wprintf(L"[!]ICLRMetaHost::GetRuntime failed w/hr 0x%08lx\n", hr);
+		goto Cleanup;
+	}
+	// Check if the specified runtime can be loaded into the process. This 
+	// method will take into account other runtimes that may already be 
+	// loaded into the process and set pbLoadable to TRUE if this runtime can 
+	// be loaded in an in-process side-by-side fashion. 
+	BOOL fLoadable;
+	hr = pRuntimeInfo-&gt;IsLoadable(&amp;fLoadable);
+	if (FAILED(hr))
+	{
+		wprintf(L"[!]ICLRRuntimeInfo::IsLoadable failed w/hr 0x%08lx\n", hr);
+		goto Cleanup;
+	}
+	if (!fLoadable)
+	{
+		wprintf(L"[!].NET runtime %s cannot be loaded\n", pszVersion);
+		goto Cleanup;
+	}
+	// Load the CLR into the current process and return a runtime interface 
+	// pointer. ICorRuntimeHost and ICLRRuntimeHost are the two CLR hosting  
+	// interfaces supported by CLR 4.0. Here we demo the ICLRRuntimeHost 
+	// interface that was provided in .NET v2.0 to support CLR 2.0 new 
+	// features. ICLRRuntimeHost does not support loading the .NET v1.x 
+	// runtimes.
+	hr = pRuntimeInfo-&gt;GetInterface(CLSID_CLRRuntimeHost, IID_PPV_ARGS(&amp;pClrRuntimeHost));
+	if (FAILED(hr))
+	{
+		wprintf(L"[!]ICLRRuntimeInfo::GetInterface failed w/hr 0x%08lx\n", hr);
+		goto Cleanup;
+	}
+	// Start the CLR.
+	hr = pClrRuntimeHost-&gt;Start();
+	if (FAILED(hr))
+	{
+		wprintf(L"[!]CLR failed to start w/hr 0x%08lx\n", hr);
+		goto Cleanup;
+	}
+	// 
+	// Load the NET assembly and call the static method.
+	// 
+	wprintf(L"[+]Load the assembly %s\n", pszAssemblyName);
+	// The invoked method of ExecuteInDefaultAppDomain must have the 
+	// following signature: static int pwzMethodName (String pwzArgument)
+	// where pwzMethodName represents the name of the invoked method, and 
+	// pwzArgument represents the string value passed as a parameter to that 
+	// method. If the HRESULT return value of ExecuteInDefaultAppDomain is 
+	// set to S_OK, pReturnValue is set to the integer value returned by the 
+	// invoked method. Otherwise, pReturnValue is not set.
+	hr = pClrRuntimeHost-&gt;ExecuteInDefaultAppDomain(pszAssemblyName, pszClassName, pszMethodName, pszArgName, &amp;dwLengthRet);
+	if (FAILED(hr))
+	{
+		wprintf(L"[!]Failed to call %s w/hr 0x%08lx\n", pszMethodName, hr);
+		goto Cleanup;
+	}
+	// Print the call result of the static method.
+	wprintf(L"[+]Call %s.%s(\"%s\") =&gt; %d\n", pszClassName, pszMethodName, pszArgName, dwLengthRet);
+
+Cleanup:
+	if (pMetaHost)
+	{
+		pMetaHost-&gt;Release();
+		pMetaHost = NULL;
+	}
+	if (pRuntimeInfo)
+	{
+		pRuntimeInfo-&gt;Release();
+		pRuntimeInfo = NULL;
+	}
+	if (pClrRuntimeHost)
+	{
+		// Please note that after a call to Stop, the CLR cannot be 
+		// reinitialized into the same process. This step is usually not 
+		// necessary. You can leave the .NET runtime loaded in your process.
+		//wprintf(L"Stop the .NET runtime\n");
+		//pClrRuntimeHost-&gt;Stop();
+		pClrRuntimeHost-&gt;Release();
+		pClrRuntimeHost = NULL;
+	}
+	return hr;
+}
+
+int main()
+{
+	RuntimeHost_GetRuntime_ICLRRuntimeInfo(L"v4.0.30319", L"ClassLibrary1.dll", L"ClassLibrary1.Class1", L"TestMethod", L"argstring");
+	return 0;
+}
+</code></pre></div></div>
+
+<p>代码将会加载同级目录下.Net4.0开发的ClassLibrary1.dll，类名为Class1，方法为TestMethod，传入的参数为argstring</p>
+
+<p>ClassLibrary1.dll的代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace ClassLibrary1
+{
+    public class Class1
+    {
+        public static int TestMethod(string str)
+        {
+            System.Diagnostics.Process p = new System.Diagnostics.Process();
+            p.StartInfo.FileName = "c:\\windows\\system32\\calc.exe";
+            p.Start();
+            return 0;
+        }
+    }
+}
+</code></pre></div></div>
+
+<h2 id="0x04-开源利用代码分析">0x04 开源利用代码分析</h2>
+<hr />
+
+<h3 id="1unmanaged-clr-hosting-assembly-loader">1、Unmanaged CLR Hosting Assembly loader</h3>
+
+<p>https://github.com/caseysmithrc/AssemblyLoader</p>
+
+<p>利用CLR从代码中定义好的数组读取shellcode，加载到内存并执行</p>
+
+<p>实现方法如下：</p>
+
+<h4 id="1将clr加载到进程中-1">1.将CLR加载到进程中</h4>
+
+<p>(1)调用CLRCreateInstance函数以获取ICLRMetaHost或ICLRMetaHostPolicy接口</p>
+
+<p>(2)调用ICLRMetaHost::GetRuntime方法以获取有效的ICLRRuntimeInfo指针</p>
+
+<p>(3)使用ICorRuntimeHost</p>
+
+<p><strong>注：</strong></p>
+
+<p>在使用ICorRuntimeHost时，需要添加对mscorlib.tlb的引用，c++代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>// Import mscorlib.tlb (Microsoft Common Language Runtime Class Library).
+#import "mscorlib.tlb" raw_interfaces_only				\
+    high_property_prefixes("_get","_put","_putref")		\
+    rename("ReportEvent", "InteropServices_ReportEvent")
+using namespace mscorlib;
+#pragma endregion
+</code></pre></div></div>
+
+<p>在ICorRuntimeHost中，从文件读取并加载.NET程序集的方法定义如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  virtual HRESULT __stdcall Load_2 (
+    /*[in]*/ BSTR assemblyString,
+    /*[out,retval]*/ struct _Assembly * * pRetVal ) = 0;
+</code></pre></div></div>
+
+<p>从内存中读取并加载.NET程序集的方法定义如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>  virtual HRESULT __stdcall Load_3 (
+    /*[in]*/ SAFEARRAY * rawAssembly,
+    /*[out,retval]*/ struct _Assembly * * pRetVal ) = 0;
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>方法定义来自mscorlib.tlh</p>
+
+<p>这里使用了Load_3(…)，先从数组中读取shellcode，再加载.NET程序集</p>
+
+<h4 id="2加载net程序集并调用静态方法-1">2.加载.NET程序集并调用静态方法</h4>
+
+<h4 id="3清理clr-1">3.清理CLR</h4>
+
+<h3 id="2executing-a-net-assembly-from-c-in-memory-clr-hosting">2、Executing a .NET Assembly from C++ in Memory (CLR Hosting)</h3>
+
+<p>https://github.com/etormadiv/HostingCLR</p>
+
+<p>同caseysmith的方法基本相同，都是调用ICLRMetaHost::GetRuntime方法以获取有效的ICLRRuntimeInfo指针，使用ICorRuntimeHost接口，使用Load_3(…)从内存中读取并加载.NET程序集</p>
+
+<h3 id="3clr-via-native-code">3、CLR via native code</h3>
+
+<p>https://gist.githubusercontent.com/xpn/e95a62c6afcf06ede52568fcd8187cc2/raw/f3498245c8309d44af38502a2cc7090c318e8adf/clr_via_native.c</p>
+
+<p>值得注意的是这里调用ICLRMetaHost::EnumerateInstalledRuntimes获取有效的ICLRRuntimeInfo指针</p>
+
+<p>接着使用ICLRRuntimeHost从文件加载.NET程序集并调用静态方法</p>
+
+<h3 id="4metasploit-execute-assembly">4、metasploit-execute-assembly</h3>
+
+<p>https://github.com/b4rtik/metasploit-execute-assembly</p>
+
+<p>首先创建进程notepad.exe，然后向notepad.exe注入HostingCLRx64.dll，HostingCLRx64.dll实现内存加载.Net程序集</p>
+
+<p>这里我们只关注内存加载.Net程序集的细节，代码位置:</p>
+
+<p>https://github.com/b4rtik/metasploit-execute-assembly/blob/master/HostingCLR_inject/HostingCLR/HostingCLR.cpp</p>
+
+<p>细节如下：</p>
+
+<ul>
+  <li>使用.Net v4.0.30319</li>
+  <li>调用ICLRMetaHost::GetRuntime方法以获取有效的ICLRRuntimeInfo指针</li>
+  <li>使用ICorRuntimeHost接口</li>
+  <li>使用Load_3(…)从内存中读取并加载.NET程序集</li>
+</ul>
+
+<p>同1和2基本相同</p>
+
+<h2 id="0x05-利用思路">0x05 利用思路</h2>
+<hr />
+
+<p>综合0x04中的开源代码，execute-assembly通常有以下两种利用思路：</p>
+
+<h4 id="1从内存中读取shellcode并加载net程序集">1.从内存中读取shellcode并加载.NET程序集</h4>
+
+<ul>
+  <li>调用ICLRMetaHost::EnumerateInstalledRuntimes, ICLRMetaHost::GetRuntime或者ICLRMetaHostPolicy::GetRequestedRuntime方法以获取有效的ICLRRuntimeInfo指针</li>
+  <li>使用ICorRuntimeHost接口</li>
+  <li>使用Load_3(…)从内存中读取并加载.NET程序集</li>
+  <li>调用静态方法</li>
+</ul>
+
+<h4 id="2从硬盘读取并加载net程序集">2.从硬盘读取并加载.NET程序集</h4>
+
+<ul>
+  <li>调用ICLRMetaHost::EnumerateInstalledRuntimes, ICLRMetaHost::GetRuntime或者ICLRMetaHostPolicy::GetRequestedRuntime方法以获取有效的ICLRRuntimeInfo指针</li>
+  <li>使用ICorRuntimeHost(使用Load_2(…))或者ICLRRuntimeHost接口</li>
+  <li>加载.NET程序集并调用静态方法</li>
+</ul>
+
+<p>第一种利用思路要优于第二种，完整的利用过程如下：</p>
+
+<ol>
+  <li>创建一个正常的进程</li>
+  <li>通过Dll反射向进程注入dll</li>
+  <li>dll实现从内存中读取shellcode并加载最终的.NET程序集</li>
+</ol>
+
+<p>优点如下：</p>
+
+<ul>
+  <li>整个过程在内存执行，不写入文件系统</li>
+  <li>Payload以dll形式存在，不会产生可疑的进程</li>
+  <li>最终的Payload为C#程序，现有的Powershell利用脚本转换为C#代码很方便</li>
+</ul>
+
+<h2 id="0x06-防御建议">0x06 防御建议</h2>
+<hr />
+
+<p>整个利用过程必须要用到dll注入，可以对常见的dll注入方法(尤其是Dll反射)进行拦截</p>
+
+<p>而对于dll本身，在使用CLR时，会加载系统的dll，例如：</p>
+
+<ul>
+  <li>mscoree.dll</li>
+  <li>mscoreei.dll</li>
+  <li>mscorlib.dll</li>
+</ul>
+
+<p>可对此进行监控</p>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文结合多个开源代码，总结了”execute-assembly”的实现方法和利用思路，分析优点，最后给出防御建议</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

@@ -1,0 +1,350 @@
+I"�?<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E5%9F%BA%E7%A1%80-Windows%E4%B8%8B%E8%AE%A1%E5%88%92%E4%BB%BB%E5%8A%A1%E7%9A%84%E4%BD%BF%E7%94%A8">《渗透基础——Windows下计划任务的使用》</a>曾介绍过计划任务的用法。而在域环境中，通过组策略(Group Policy Object)同样能够实现计划任务的远程执行，本文将要对这个方法进行介绍，分析利用思路。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容:</p>
+
+<ul>
+  <li>GPO中的计划任务简介</li>
+  <li>通过Group Policy Management Console (GPMC) 实现计划任务的远程执行</li>
+  <li>通过命令行实现计划任务的远程执行</li>
+  <li>新建GPO实现远程执行</li>
+  <li>修改已有的GPO，实现远程执行</li>
+  <li>GPO的常用操作</li>
+</ul>
+
+<h2 id="0x02-简介">0x02 简介</h2>
+<hr />
+
+<p>值得阅读的资料：</p>
+
+<p>http://www.harmj0y.net/blog/redteaming/abusing-gpo-permissions/</p>
+
+<p>https://adsecurity.org/?p=2716</p>
+
+<p>http://www.sicherheitsforschung-magdeburg.de/uploads/journal/MJS_052_Willi_GPO.pdf</p>
+
+<p>GPO全称Group Policy Objects，用来存储Active Directory中的策略</p>
+
+<p>自Windows Server 2008开始，GPO开始支持计划任务，便于管理域中的计算机和用户</p>
+
+<p>默认情况下，域用户的组策略每90分钟更新，随机偏移为0-30分钟，域控制器的组策略每5分钟更新</p>
+
+<p><strong>注：</strong></p>
+
+<p>可通过命令实现组策略的强制更新</p>
+
+<p>默认组策略的保存位置：<code class="language-plaintext highlighter-rouge">\\&lt;DOMAIN&gt;\SYSVOL\&lt;DOMAIN&gt;\Policies\</code>，所有域内主机都能访问</p>
+
+<p><strong>注：</strong></p>
+
+<p>之前的文章<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-%E5%88%A9%E7%94%A8SYSVOL%E8%BF%98%E5%8E%9F%E7%BB%84%E7%AD%96%E7%95%A5%E4%B8%AD%E4%BF%9D%E5%AD%98%E7%9A%84%E5%AF%86%E7%A0%81">《域渗透-利用SYSVOL还原组策略中保存的密码》</a>曾介绍过这个文件位置</p>
+
+<p>默认存在两个组策略，每个文件夹对应一个组策略：</p>
+
+<p><code class="language-plaintext highlighter-rouge">{6AC1786C-016F-11D2-945F-00C04fB984F9}</code>对应<code class="language-plaintext highlighter-rouge">Default Domain Controllers Policy</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">{31B2F340-016D-11D2-945F-00C04FB984F9}</code>对应<code class="language-plaintext highlighter-rouge">Default Domain Policy</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-11-21/2-1.png" alt="Alt text" /></p>
+
+<h2 id="0x03-通过group-policy-management-console-gpmc-实现计划任务的远程执行">0x03 通过Group Policy Management Console (GPMC) 实现计划任务的远程执行</h2>
+<hr />
+
+<p>在域控制器上，位置： <code class="language-plaintext highlighter-rouge">Administrative Tools</code> -&gt; <code class="language-plaintext highlighter-rouge">Group Policy Management</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-11-21/3-1.png" alt="Alt text" /></p>
+
+<p>选择域test.local，右键，选中第一个，创建GPO，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-11-21/3-2.png" alt="Alt text" /></p>
+
+<p>输入名称TestGPO1，这会创建一个全局的GPO，作用于所有域用户</p>
+
+<p>选择TestGPO1，右键，<code class="language-plaintext highlighter-rouge">Edit...</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">User Configuration</code> -&gt; <code class="language-plaintext highlighter-rouge">Preferences</code> -&gt; <code class="language-plaintext highlighter-rouge">Control Panel Settings</code> -&gt; <code class="language-plaintext highlighter-rouge">Scheduled Tasks</code></p>
+
+<p><code class="language-plaintext highlighter-rouge">New</code> -&gt; <code class="language-plaintext highlighter-rouge">Immediate Task(Windows Vista and later)</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-11-21/3-3.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>Immediate Task会在每次组策略刷新时执行</p>
+
+<p>四种计划任务的区别可参考官方文档：</p>
+
+<p>https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-R2-and-2008/cc770904(v%3dws.11)</p>
+
+<p><strong>注：</strong></p>
+
+<p>也可以选择位置<code class="language-plaintext highlighter-rouge">Computer Configuration</code> -&gt; <code class="language-plaintext highlighter-rouge">Preferences</code> -&gt; <code class="language-plaintext highlighter-rouge">Control Panel Settings</code> -&gt; <code class="language-plaintext highlighter-rouge">Scheduled Tasks</code></p>
+
+<p>接下来，根据提示设置计划任务即可</p>
+
+<p>为便于测试，执行的操作为将执行结果输出到文件，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-11-21/3-4.png" alt="Alt text" /></p>
+
+<p>这个组策略对应的ID为<code class="language-plaintext highlighter-rouge">{7D85A2EF-F525-4D8C-B12D-F2825F3A1224}</code>，在位置<code class="language-plaintext highlighter-rouge">\\test.com\SYSVOL\test.com\Policies\{7D85A2EF-F525-4D8C-B12D-F2825F3A1224}\User\Preferences\ScheduledTasks</code>下找到文件<code class="language-plaintext highlighter-rouge">ScheduledTasks.xml</code>，里面保存计划任务的配置信息</p>
+
+<p>对于域内的主机，可以等待90分钟使组策略自动更新，也可以在客户端执行如下命令强制刷新组策略：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gpupdate /force
+</code></pre></div></div>
+
+<p>客户端默认更新组策略的方式：</p>
+
+<p>读取域共享目录中组策略的版本，位置为<code class="language-plaintext highlighter-rouge">\\&lt;domain.com&gt;\Policies\&lt;gpo id&gt;\GPT.ini</code>，如果版本高于本地保存的组策略版本，客户端将会更新本地的组策略</p>
+
+<p>每次修改组策略，<code class="language-plaintext highlighter-rouge">\\&lt;domain.com&gt;\Policies\&lt;gpo id&gt;\GPT.ini</code>中的<code class="language-plaintext highlighter-rouge">Version</code>会增加</p>
+
+<p>如果域控制器强制客户端刷新组策略，那么不会比较域共享目录中组策略的版本</p>
+
+<h2 id="0x04-通过命令行实现计划任务的远程执行">0x04 通过命令行实现计划任务的远程执行</h2>
+<hr />
+
+<p>域控制器系统： Windows Server 2012 R2 x64
+域名： test.com</p>
+
+<h3 id="1创建一个gpo">1、创建一个GPO</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>New-GPO -Name TestGPO1
+</code></pre></div></div>
+
+<h3 id="2将gpo连到到域testcom">2、将GPO连到到域test.com</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>New-GPLink -Name TestGPO1 -Target "dc=test,dc=com"
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>两条命令可以简写为一条命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>new-gpo -name TestGPO1 | new-gplink -Target "dc=test,dc=com"
+</code></pre></div></div>
+
+<p>通过命令行回显获得ID为<code class="language-plaintext highlighter-rouge">0bfd3f0c-21a1-4eca-8a5e-1f0bd4dc64dc</code></p>
+
+<h3 id="3创建计划任务">3、创建计划任务</h3>
+
+<p>通过Group Policy Management Console (GPMC)创建的计划任务会自动注册</p>
+
+<p>而我目前还没有找到注册计划任务的接口，所以只能寻找一个变通的方法</p>
+
+<p>好在我最终找到了变通的解决方法，步骤如下：</p>
+
+<h4 id="1导出gpo">(1)导出GPO</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Backup-Gpo -Name TestGPO1 -Path C:\test
+</code></pre></div></div>
+
+<h4 id="2创建计划任务的配置文件scheduledtasksxml">(2)创建计划任务的配置文件ScheduledTasks.xml</h4>
+
+<p>路径为<code class="language-plaintext highlighter-rouge">\\&lt;domain.com&gt;\Policies\&lt;gpo id&gt;\DomainSysvol\GPO\User\Preferences\ScheduledTasks\ScheduledTasks.xml</code></p>
+
+<h4 id="3修改backupxml和gpreportxml">(3)修改<code class="language-plaintext highlighter-rouge">Backup.xml</code>和<code class="language-plaintext highlighter-rouge">gpreport.xml</code></h4>
+
+<p>加入计划任务的配置信息</p>
+
+<h4 id="4还原gpo">(4)还原GPO</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Import-GPO -BackupId &lt;backupid&gt; -TargetName TestGPO1 -Path C:\test
+</code></pre></div></div>
+
+<p>完整实现代码已开源，下载地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Powershell/blob/master/New-GPOImmediateTask.ps1</p>
+
+<p><strong>注：</strong></p>
+
+<p>下篇文章将会详细介绍原理和脚本实现细节</p>
+
+<p>脚本命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>New-GPOImmediateTask -TaskName Debugging -GPODisplayName TestGPO -SysPath '\\dc.test.com\sysvol\test.com' -CommandArguments '-c "123 | Out-File C:\test\debug.txt"'
+</code></pre></div></div>
+
+<p>脚本自动实现以下操作：</p>
+
+<ul>
+  <li>将TestGPO备份至当前目录</li>
+  <li>修改备份文件夹下的<code class="language-plaintext highlighter-rouge">Backup.xml</code>和<code class="language-plaintext highlighter-rouge">gpreport.xml</code></li>
+  <li>在备份文件夹中生成文件<code class="language-plaintext highlighter-rouge">ScheduledTasks.xml</code></li>
+  <li>还原TestGPO</li>
+</ul>
+
+<h3 id="4强制客户端刷新组策略">4、强制客户端刷新组策略</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Invoke-GPUpdate -Computer "TEST\COMPUTER-01"
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>Windows Server 2008 R2默认不支持该命令，Windows Server 2012支持</p>
+
+<p>客户端的防火墙需要允许以下连接：</p>
+
+<ul>
+  <li>Remote Scheduled Tasks Management (RPC)</li>
+  <li>Remote Scheduled Tasks Management (RPC-ERMAP)</li>
+  <li>Windows Management Instrumentation (WMI-IN)</li>
+</ul>
+
+<p>官方资料：</p>
+
+<p>https://docs.microsoft.com/en-us/powershell/module/grouppolicy/invoke-gpupdate?view=win10-ps</p>
+
+<h3 id="5删除gpo">5、删除GPO</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Remove-GPO -Name TestGPO1
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>通过Group Policy Management Console (GPMC)右键删除GPO不会删除对应的文件夹，Remove-GPO可以</p>
+
+<h2 id="0x05-利用思路">0x05 利用思路</h2>
+<hr />
+
+<p>前提是获得了域管理员的权限或者某个组策略的编辑权限</p>
+
+<p>通用操作如下：</p>
+
+<p>加载GroupPolicy模块：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Import-Module GroupPolicy –verbose
+</code></pre></div></div>
+
+<p>获得所有GPO的内容：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-GPO -All
+</code></pre></div></div>
+
+<p>将所有GPO导出为一个HTML报告：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-GPOReport -All -ReportType html -Path C:\GposReport\GposReport.html
+</code></pre></div></div>
+
+<p>将每个GPO单独导出一个HTML报告：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-GPO -All | %{
+Get-GPOReport -name $_.displayname -ReportType html -path ("c:\GPOReports\"+$_.displayname+".html")
+}
+</code></pre></div></div>
+
+<p>查看指定GPO的权限设置：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-GPPermission -Name "TestGPO1" -All 
+</code></pre></div></div>
+
+<p>备份指定GPO：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Backup-Gpo -Name TestGPO1 -Path C:\GpoBackups
+</code></pre></div></div>
+
+<p>备份所有GPO：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Backup-Gpo -All -Path "c:\GpoBackups"
+</code></pre></div></div>
+
+<p>还原指定GPO：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Restore-GPO -Name TestGPO1 -Path C:\GpoBackups
+</code></pre></div></div>
+
+<p>还原所有GPO：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Restore-GPO -All -Path "c:\GpoBackups"
+</code></pre></div></div>
+
+<p>根据不同情况，有以下两种利用思路：</p>
+
+<h3 id="1新建组策略创建计划任务实现远程执行">1、新建组策略，创建计划任务实现远程执行</h3>
+
+<ul>
+  <li>创建一个新的GPO</li>
+  <li>备份GPO</li>
+  <li>修改Backup.xml和gpreport.xml</li>
+  <li>创建ScheduledTasks.xml</li>
+  <li>还原GPO</li>
+  <li>强制客户端刷新策略</li>
+  <li>清理操作痕迹</li>
+</ul>
+
+<h3 id="2修改已有组策略替换计划任务">2、修改已有组策略，替换计划任务</h3>
+
+<p>如果域控制器上已有策略并配置了计划任务</p>
+
+<p>不再需要注册，修改ScheduledTasks.xml就好</p>
+
+<h2 id="0x06-gpo的常用操作">0x06 GPO的常用操作</h2>
+<hr />
+
+<p>创建OU:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>New-ADOrganizationalUnit -Name OUTest1 -Path "dc=test,dc=com"
+</code></pre></div></div>
+
+<p>查看当前域中的所有计算机:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dsquery computer
+</code></pre></div></div>
+
+<p>获得结果”CN=Computer1,CN=Computers,DC=test,DC=com”</p>
+
+<p>将该计算机加到OU=OUTest1中:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dsmove "CN=Computer1,CN=Computers,DC=test,DC=com" -newparent OU=OUTest1,dc=test,dc=com
+</code></pre></div></div>
+
+<p>查询OU=OUTest1中的计算机:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dsquery computer OU=OUTest1,dc=test,dc=com
+</code></pre></div></div>
+
+<p>创建GPO并连接:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>new-gpo -name TestGPO | new-gplink -Target "OU=OUTest1,dc=test,dc=com"
+</code></pre></div></div>
+
+<p>还原：</p>
+
+<p>将计算机Computer1从OU=OUTest1中移除</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>dsmove "CN=Computer1,OU=OUTest1,DC=test,DC=com" -newparent CN=Computers,dc=test,dc=com
+</code></pre></div></div>
+
+<p>删除OU=OUTest1：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>set-ADOrganizationalUnit -Identity "OU=OUTest1,dc=test,dc=com" -ProtectedFromAccidentalDeletion $false
+Remove-ADOrganizationalUnit -Identity "OU=OUTest1,dc=test,dc=com" -Recursive -Confirm:$False
+</code></pre></div></div>
+
+<h2 id="0x07-小结">0x07 小结</h2>
+<hr />
+
+<p>本文介绍了利用GPO中的计划任务实现远程执行的方法，分析利用思路，通过命令行实现了GPO和计划任务的创建、修改和删除。</p>
+
+<h2 id="0x08-补充">0x08 补充</h2>
+
+<p>我注意到harmj0y的博客中提到了某些情况下他的脚本无法使用的情况：</p>
+
+<p>http://www.harmj0y.net/blog/redteaming/abusing-gpo-permissions/</p>
+
+<p>个人认为是因为创建的计划任务没有注册，使用我修改以后的脚本应该能解决这个问题，如果读者有新的建议，欢迎及时反馈。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

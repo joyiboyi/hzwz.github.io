@@ -1,0 +1,253 @@
+I"�,<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E5%9F%BA%E7%A1%80-%E6%B4%BB%E5%8A%A8%E7%9B%AE%E5%BD%95%E4%BF%A1%E6%81%AF%E7%9A%84%E8%8E%B7%E5%8F%96">《渗透基础——活动目录信息的获取》</a>以获取活动目录中所有用户、所有计算机和所有组为例，介绍常用的信息获取方法。</p>
+
+<p>但是在实际使用过程中，一些工具会被杀毒软件拦截。</p>
+
+<p>所以本文将要对获取方法进行补充，同时绕过杀毒软件的拦截。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>使用csvde获取活动目录信息</li>
+  <li>使用ldifde获取活动目录信息</li>
+  <li>使用AdFind获取活动目录信息</li>
+  <li>使用C#开发的轻量级获取工具</li>
+</ul>
+
+<h2 id="0x02-使用csvde获取活动目录信息">0x02 使用csvde获取活动目录信息</h2>
+<hr />
+
+<p>说明文档：</p>
+
+<p>https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc732101(v=ws.11)</p>
+
+<p>使用csvde导出的文件格式为csv，可以使用Microsoft Excel查看</p>
+
+<p>默认只能在以下系统使用，例如：</p>
+
+<ul>
+  <li>Windows Server 2003</li>
+  <li>Windows Server 2008</li>
+  <li>Windows Server 2003 R2</li>
+  <li>Windows Server 2008 R2</li>
+  <li>Windows Server 2012,</li>
+  <li>Windows Server 2003 with SP1</li>
+  <li>Windows 8</li>
+  <li>…</li>
+</ul>
+
+<h3 id="1导出当前域内活动目录信息示例">1.导出当前域内活动目录信息示例</h3>
+
+<p>导出当前域内所有信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>csvde -f all.csv
+</code></pre></div></div>
+
+<p>导出当前域内所有用户信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>csvde -f user.csv -r "(&amp;(objectCategory=person))"
+</code></pre></div></div>
+
+<p>导出当前域内所有机器信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>csvde -f machine.csv -r "(&amp;(objectCategory=computer))"
+</code></pre></div></div>
+
+<p>导出当前域内所有组信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>csvde -f group.csv -r "(&amp;(objectCategory=group))"
+</code></pre></div></div>
+
+<p>导出当前域内所有管理员组的用户信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>csvde -f admin.csv -r "(&amp;(objectCategory=group)(name=Domain Admins))"
+</code></pre></div></div>
+
+<p>导出当前域内所有OU信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>csvde -f ou.csv -r "(&amp;(objectCategory=organizationalUnit))"
+</code></pre></div></div>
+
+<p>导出当前域内所有的域用户名：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>csvde -f username.csv -r "(&amp;(objectCategory=person))" -l SamAccountName
+</code></pre></div></div>
+
+<p>导出当前域内所有的计算机名：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>csvde -f machinename.csv -r "(&amp;(objectCategory=computer))" -l name
+</code></pre></div></div>
+
+<h3 id="2从域外远程导出活动目录信息示例">2.从域外远程导出活动目录信息示例</h3>
+
+<p>导出远程域内所有信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>csvde -s 192.168.1.1 -a test\admin Password -f all.csv
+</code></pre></div></div>
+
+<h2 id="0x03-使用ldifde获取活动目录信息">0x03 使用ldifde获取活动目录信息</h2>
+<hr />
+
+<p>说明文档：</p>
+
+<p>https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc731033(v=ws.11)</p>
+
+<p>使用ldifde导出的文件格式为LDIF，可以使用notepad.exe查看</p>
+
+<h3 id="1导出当前域内活动目录信息示例-1">1.导出当前域内活动目录信息示例</h3>
+
+<p>导出当前域内所有信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldifde -f all.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有用户信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldifde -r "(&amp;(objectCategory=person))" -f user.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有机器信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldifde -r "(&amp;(objectCategory=computer))" -f machine.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有组信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldifde -r "(&amp;(objectCategory=group))" -f group.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有管理员组的用户信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldifde -r "(&amp;(objectCategory=group)(name=Domain Admins))" -f admin.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有OU信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldifde -r "(&amp;(objectCategory=organizationalUnit))" -f ou.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有的域用户名：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldifde -r "(&amp;(objectCategory=person))" -l SamAccountName -f username.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有的计算机名：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldifde -r "(&amp;(objectCategory=computer))" -l name -f machinename.txt
+</code></pre></div></div>
+
+<h3 id="2从域外远程导出活动目录信息示例-1">2.从域外远程导出活动目录信息示例</h3>
+
+<p>导出远程域内所有信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ldifde -s 192.168.1.1 -a test\admin Password -f all.txt
+</code></pre></div></div>
+
+<h2 id="0x04-使用adfind获取活动目录信息">0x04 使用AdFind获取活动目录信息</h2>
+<hr />
+
+<p>下载地址：</p>
+
+<p>https://www.joeware.net/freetools/tools/adfind/</p>
+
+<h3 id="1导出当前域内活动目录信息示例-2">1.导出当前域内活动目录信息示例</h3>
+
+<p>导出当前域内所有信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adfind.exe -h 127.0.0.1&gt;all.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有用户信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adfind.exe -h 127.0.0.1 -f objectcategory=person&gt;user.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有机器信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adfind.exe -h 127.0.0.1 -f objectcategory=computer&gt;machine.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有组信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adfind.exe -h 127.0.0.1 -f objectcategory=group&gt;group.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有管理员组的用户信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adfind.exe -h 127.0.0.1 -f "(&amp;(objectCategory=group)(name=Domain Admins))"&gt;admin.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有OU信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adfind.exe -h 127.0.0.1 -f objectcategory=organizationalUnit&gt;ou.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有的域用户名：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adfind.exe -h 127.0.0.1 -f objectcategory=person SamAccountName&gt;username.txt
+</code></pre></div></div>
+
+<p>导出当前域内所有的计算机名：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adfind.exe -h 127.0.0.1 -f objectcategory=computer name&gt;machinename.txt
+</code></pre></div></div>
+
+<h3 id="2从域外远程导出活动目录信息示例-2">2.从域外远程导出活动目录信息示例</h3>
+
+<p>导出远程域内所有信息：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>adfind.exe -h 192.168.1.1 -u test\admin -up Password&gt;all.txt
+</code></pre></div></div>
+
+<h2 id="0x05-使用c开发的轻量级获取工具">0x05 使用C#开发的轻量级获取工具</h2>
+<hr />
+
+<p><a href="https://github.com/tevora-threat/SharpView">SharpView</a>通过.Net实现了<a href="https://github.com/PowerShellMafia/PowerSploit/blob/dev/Recon/PowerView.ps1">PowerView</a>中关于获取活动目录信息的功能，功能很完整，但是会被杀毒软件拦截。</p>
+
+<p>而我们通过调用命名空间<code class="language-plaintext highlighter-rouge">System.DirectoryServices</code>，能够很容易实现简单的功能，满足基本需求，并且通常情况下不会被杀毒软件拦截。</p>
+
+<p>这里可以使用之前的代码<a href="https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/ListUserMailbyLDAP.cs">ListUserMailbyLDAP.cs</a>作为模板，修改查询语句即可。</p>
+
+<p>我以AdFind的基础功能作为参照，实现了一个轻量级的工具，完整的代码已上传github，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-C-Sharp/blob/master/SharpADFindDemo.cs</p>
+
+<p>SharpADFindDemo可以在.Net3.5或.Net4的Windows系统下直接编译</p>
+
+<p>编译方法如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework64\v3.5\csc.exe SharpADFindDemo.cs /r:System.DirectoryServices.dll
+or
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe SharpADFindDemo.cs /r:System.DirectoryServices.dll
+</code></pre></div></div>
+
+<p>支持导出以下AD信息：</p>
+
+<ul>
+  <li>user，所有域用户信息</li>
+  <li>machine，所有域计算机信息</li>
+  <li>group，所有域组信息</li>
+  <li>ou，所有域OU信息</li>
+  <li>username，只导出域用户名</li>
+  <li>machinename，只导出域计算机名</li>
+  <li>groupname，只导出域组名</li>
+  <li>ouname，只导出域OU名</li>
+</ul>
+
+<p>这里需要注意的是默认导出的最大数目为1000个</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文对活动目录信息的获取方法进行了补充，介绍了3个常用工具，使用C#开发了一个轻量级获取工具SharpADFindDemo，后续可以此为模板，结合<a href="https://github.com/tevora-threat/SharpView">SharpView</a>添加其他功能。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

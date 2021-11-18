@@ -1,0 +1,387 @@
+I"�7<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>Covenant是一个.NET开发的C2(command and control)框架，使用.NET Core的开发环境，不仅支持Linux，MacOS和Windows，还支持docker容器。</p>
+
+<p>最特别的地方是支持动态编译，能够将输入的C#代码上传至C2 Server，获得编译后的文件并使用Assembly.Load()从内存进行加载。</p>
+
+<p>本文仅在技术研究的角度，介绍Covenant的细节，分析特点。</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>Covenant的启动方法</li>
+  <li>Covenant的功能介绍</li>
+  <li>Covenant的优点</li>
+  <li>Covenant的检测</li>
+</ul>
+
+<h2 id="0x02-covenant的启动方法">0x02 Covenant的启动方法</h2>
+<hr />
+
+<h3 id="1windows系统">1.Windows系统</h3>
+
+<p>需要装对应版本的.NET Core、ASP.NET Core和SDK</p>
+
+<p>经测试，Covenant需要.NET Core 2.2.0、ASP.NET Core 2.2.0和SDK 2.2.101，其他版本会报错</p>
+
+<p>下载地址：</p>
+
+<p>https://dotnet.microsoft.com/download/thank-you/dotnet-sdk-2.2.101-windows-x64-installer</p>
+
+<p>https://dotnet.microsoft.com/download/thank-you/dotnet-runtime-2.2.0-windows-x64-installer</p>
+
+<p>https://dotnet.microsoft.com/download/thank-you/dotnet-runtime-2.2.0-windows-x64-asp.net-core-runtime-installer</p>
+
+<p>安装Git for Windows</p>
+
+<p>https://github.com/git-for-windows/git/releases/download/v2.23.0.windows.1/Git-2.23.0-64-bit.exe</p>
+
+<p>下载并启动：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone --recurse-submodules https://github.com/cobbr/Covenant
+cd Covenant/Covenant
+dotnet build
+dotnet run
+</code></pre></div></div>
+
+<p>访问https://localhost:7443进入控制面板，第一次使用时需要注册用户</p>
+
+<p>这里可以注册多个用户，实现团队协作</p>
+
+<p><strong>注：</strong></p>
+
+<p>Elite是与Covenant服务器进行交互的命令行程序，目前已经临时弃用，地址：</p>
+
+<p>https://github.com/cobbr/Elite</p>
+
+<h2 id="0x03-covenant的功能介绍">0x03 Covenant的功能介绍</h2>
+<hr />
+
+<p>Covenant支持的功能可参考：</p>
+
+<p>https://github.com/cobbr/Covenant/wiki</p>
+
+<p>这里只介绍个人认为比较重要的部分</p>
+
+<h3 id="1listeners">1.Listeners</h3>
+
+<p>只支持HTTP协议，可以指定url和通信消息的格式</p>
+
+<p>选择<code class="language-plaintext highlighter-rouge">Listeners</code>-&gt;<code class="language-plaintext highlighter-rouge">Profiles</code>，默认包括两个配置模板，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-11-1/2-1.png" alt="Alt text" /></p>
+
+<p>配置模板中可以设置多个HttpUrls，Grunt在回连的时候会从HttpUrls中随机选择</p>
+
+<p><strong>注：</strong></p>
+
+<p>Grunt用作部署到目标，作为被控制端</p>
+
+<p>HttpRequest和HttpResponse的内容都可以指定</p>
+
+<p>配置模板对应源码文件的位置： <code class="language-plaintext highlighter-rouge">.\Covenant\Covenant\Data\Profiles</code></p>
+
+<h3 id="2launchers">2.Launchers</h3>
+
+<p>用于启动Grunt，包括以下9种启动方式:</p>
+
+<h4 id="1binary">(1)Binary</h4>
+
+<p>.NET程序集，格式为exe文件</p>
+
+<h4 id="2powershell">(2)PowerShell</h4>
+
+<p>命令行下通过Powershell启动Grunt</p>
+
+<p>将.NET程序集保存在数组，通过Assembly.Load()在内存进行加载</p>
+
+<p>代码示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[Reflection.Assembly]::Load(Data).EntryPoint.Invoke(0,$a.ToArray())
+</code></pre></div></div>
+
+<h4 id="3msbuild">(3)MSBuild</h4>
+
+<p>命令行下通过msbuild启动Grunt</p>
+
+<p>启动命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework\v4.0.30319\msbuild.exe GruntStager.xml
+</code></pre></div></div>
+
+<p>将.NET程序集保存在数组，通过Assembly.Load()在内存进行加载</p>
+
+<p>代码示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>System.Reflection.Assembly.Load(oms.ToArray()).EntryPoint.Invoke(0, new object[] { new string[]{ } });
+</code></pre></div></div>
+
+<p>关于msbuild的用法可参考之前的文章<a href="https://3gstudent.github.io/Use-MSBuild-To-Do-More">《Use MSBuild To Do More》</a></p>
+
+<h4 id="4installutil">(4)InstallUtil</h4>
+
+<p>命令行下通过InstallUtil启动Grunt</p>
+
+<p><strong>注：</strong></p>
+
+<p>我在测试的时候这里产生了bug，生成的文件名称为<code class="language-plaintext highlighter-rouge">GruntStager.xml</code>，里面保存了base64加密的.NET程序集</p>
+
+<p>按照我理解的InstallUtil的用法，这里应该生成一个.cs文件</p>
+
+<p>查看Covenant的源码，生成模板的源码位置：<code class="language-plaintext highlighter-rouge">.\Covenant\Covenant\Models\Launchers\InstallUtilLauncher.cs</code></p>
+
+<p>对应的链接：</p>
+
+<p>https://github.com/cobbr/Covenant/blob/master/Covenant/Models/Launchers/InstallUtilLauncher.cs</p>
+
+<p>模板中包括.cs文件的内容，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-11-1/2-2.png" alt="Alt text" /></p>
+
+<p>这里可以将<code class="language-plaintext highlighter-rouge">CodeTemplate</code>的内容另存为.cs文件，并把其中的<code class="language-plaintext highlighter-rouge">""</code>替换成base64加密的.NET程序集，最终保存成test.cs</p>
+
+<p>启动命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /unsafe /out::file.dll test.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\InstallUtil.exe /logfile= /LogToConsole=false /U file.dll
+</code></pre></div></div>
+
+<h4 id="5wmic">(5)Wmic</h4>
+
+<p>启动命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wmic os get /format:"file.xsl"
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>Covenant在此处提示这个方法也许无法在Windows 10和Windows Server 2016下使用</p>
+
+<p>将.NET程序集保存在数组，通过DotNetToJScript的方法在内存进行加载</p>
+
+<p>代码示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>var o = delegate.DynamicInvoke(array.ToArray()).CreateInstance('Grunt.GruntStager');
+</code></pre></div></div>
+
+<p>关于Wmic的用法可参考之前的文章<a href="https://3gstudent.github.io/%E5%88%A9%E7%94%A8wmic%E8%B0%83%E7%94%A8xsl%E6%96%87%E4%BB%B6%E7%9A%84%E5%88%86%E6%9E%90%E4%B8%8E%E5%88%A9%E7%94%A8">《利用wmic调用xsl文件的分析与利用》</a></p>
+
+<h4 id="6regsvr32">(6)Regsvr32</h4>
+
+<p>启动命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>regsvr32 /u /s /i:file.sct scrobj.dll
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>Covenant在此处提示这个方法也许无法在Windows 10和Windows Server 2016下使用</p>
+
+<p>将.NET程序集保存在数组，通过DotNetToJScript的方法在内存进行加载</p>
+
+<p>关于Regsvr32的用法可参考之前的文章《Use SCT to Bypass Application Whitelisting Protection》</p>
+
+<h4 id="7mshta">(7)Mshta</h4>
+
+<p>启动命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mshta file.hta
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>Covenant在此处提示这个方法也许无法在Windows 10和Windows Server 2016下使用</p>
+
+<p>将.NET程序集保存在数组，通过DotNetToJScript的方法在内存进行加载</p>
+
+<p>关于Mshta的用法可参考之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E4%BB%8Egithub%E4%B8%8B%E8%BD%BD%E6%96%87%E4%BB%B6%E7%9A%84%E5%A4%9A%E7%A7%8D%E6%96%B9%E6%B3%95">《渗透技巧——从github下载文件的多种方法》</a></p>
+
+<h4 id="8cscript">(8)Cscript</h4>
+
+<p>启动命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cscript file.js
+</code></pre></div></div>
+
+<p>这里借助了DotNetToJScript，其他内容同上</p>
+
+<h4 id="9wscript">(9)Wscript</h4>
+
+<p>启动命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>wscript file.js
+</code></pre></div></div>
+
+<p>这里借助了DotNetToJScript，其他内容同上</p>
+
+<p>以上9种启动方式都可选择以下两个模板：</p>
+
+<h4 id="1grunthttp">(1)GruntHTTP</h4>
+
+<p>使用HTTP协议同C2 server进行通信</p>
+
+<p>执行后反弹连接至C2 server</p>
+
+<p>可设置以下参数：</p>
+
+<ul>
+  <li>ValidateCert</li>
+  <li>UseCertPinning</li>
+  <li>Delay</li>
+  <li>JitterPercent</li>
+  <li>ConnectAttempts</li>
+  <li>KillDate</li>
+  <li>DotNetFrameworkVersion</li>
+</ul>
+
+<h4 id="2gruntsmb">(2)GruntSMB</h4>
+
+<p>使用命名管道，不直接同C2 server进行通信，而是在各个Grunts之间进行通信</p>
+
+<p>执行后在本机创建命名管道，可通过其他的Grunt进行远程连接</p>
+
+<p>这里多了一个配置参数：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SMBPipeName
+</code></pre></div></div>
+
+<p>使用示例：</p>
+
+<p>GruntSMB为内网使用，可通过其他的Grunt进行激活，激活方式：</p>
+
+<p><code class="language-plaintext highlighter-rouge">Grunt:&lt;id&gt;</code>-&gt;<code class="language-plaintext highlighter-rouge">Task</code>-&gt;<code class="language-plaintext highlighter-rouge">Connect</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-11-1/2-3.png" alt="Alt text" /></p>
+
+<h3 id="3grunts">3.Grunts</h3>
+
+<p>所有Grunts的列表，可向Grunt发送控制命令</p>
+
+<h4 id="1info">(1)Info</h4>
+
+<p>包括Grunt的基本信息</p>
+
+<h4 id="2interact">(2)Interact</h4>
+
+<p>命令行的控制页面</p>
+
+<h4 id="3task">(3)Task</h4>
+
+<p>Grunt支持的功能，内置了多个开源工具：</p>
+
+<ul>
+  <li><a href="https://github.com/GhostPack/Rubeus">Rubeus</a></li>
+  <li><a href="https://github.com/GhostPack/Seatbelt">Seatbelt</a></li>
+  <li><a href="https://github.com/GhostPack/SharpDPAPI">SharpDPAPI</a></li>
+  <li><a href="https://github.com/GhostPack/SharpDump">SharpDump</a></li>
+  <li><a href="https://github.com/cobbr/SharpSploit">SharpSploit</a></li>
+  <li><a href="https://github.com/GhostPack/SharpUp">SharpUp</a></li>
+  <li><a href="https://github.com/GhostPack/SharpWMI">SharpWMI</a></li>
+</ul>
+
+<h4 id="4taskings">(4)Taskings</h4>
+
+<p>记录每条命令的执行情况</p>
+
+<h3 id="4templates">4.Templates</h3>
+
+<p>Grunt的模板文件，默认包含了GruntHTTP和GruntSMB</p>
+
+<p>这里可以修改模板文件或者添加新的模板文件</p>
+
+<h3 id="5tasks">5.Tasks</h3>
+
+<p>Task的模板文件，作为Grunt支持的功能，内置了多个开源工具：</p>
+
+<ul>
+  <li><a href="https://github.com/GhostPack/Rubeus">Rubeus</a></li>
+  <li><a href="https://github.com/GhostPack/Seatbelt">Seatbelt</a></li>
+  <li><a href="https://github.com/GhostPack/SharpDPAPI">SharpDPAPI</a></li>
+  <li><a href="https://github.com/GhostPack/SharpDump">SharpDump</a></li>
+  <li><a href="https://github.com/cobbr/SharpSploit">SharpSploit</a></li>
+  <li><a href="https://github.com/GhostPack/SharpUp">SharpUp</a></li>
+  <li><a href="https://github.com/GhostPack/SharpWMI">SharpWMI</a></li>
+</ul>
+
+<p>这里可以修改模板文件或者添加新的模板文件</p>
+
+<h3 id="6taskings">6.Taskings</h3>
+
+<p>记录所有Grunts的命令执行情况</p>
+
+<h3 id="7graph">7.Graph</h3>
+
+<p>图形化页面，展示Grunt和Listener的连接关系</p>
+
+<h3 id="8data">8.Data</h3>
+
+<p>展示从Grunt获得的有价值信息</p>
+
+<h3 id="9users">9.Users</h3>
+
+<p>管理登录用户，用作团队协作</p>
+
+<h2 id="0x04-covenant的优点">0x04 Covenant的优点</h2>
+<hr />
+
+<h3 id="1c2-server支持多平台">1.C2 Server支持多平台</h3>
+
+<p>C2 Server不仅支持Linux，MacOS和Windows，还支持docker容器</p>
+
+<h3 id="2扩展性高">2.扩展性高</h3>
+
+<p>可自定义通信协议，自定义启动方式，自定义功能等</p>
+
+<h3 id="3扩展的功能可直接在内存执行">3.扩展的功能可直接在内存执行</h3>
+
+<p>通过动态编译，C2 Server能够对代码进行动态编译后发送至目标并使用Assembly.Load()从内存进行加载</p>
+
+<h3 id="4支持内网通信统一流量出口">4.支持内网通信，统一流量出口</h3>
+
+<p>在内网各个被控制端之间通过命名管道进行通信，统一流量出口，隐藏通信通道</p>
+
+<h3 id="5便于团队协作">5.便于团队协作</h3>
+
+<p>支持多用户，能够共享资源</p>
+
+<h2 id="0x05-covenant的检测">0x05 Covenant的检测</h2>
+<hr />
+
+<h3 id="1检测net程序集的运行">1.检测.NET程序集的运行</h3>
+
+<p>因为需要使用Rosyln C＃编译器，所以会引用Microsoft.CodeAnalysis程序集</p>
+
+<p>这里可以尝试从指定进程中收集.NET事件，参考脚本：</p>
+
+<p>https://gist.github.com/cobbr/1bab9e175ebbc6ff93cc5875c69ecc50</p>
+
+<h3 id="2检测命名管道的使用">2.检测命名管道的使用</h3>
+
+<p>检测命令管道远程连接的流量</p>
+
+<p>命令管道远程连接会产生Event ID 18的日志，参考地址：</p>
+
+<p>https://github.com/hunters-forge/OSSEM/blob/master/data_dictionaries/windows/sysmon/event-18.md</p>
+
+<h3 id="3http通信流量">3.HTTP通信流量</h3>
+
+<p>默认的通信模板存在特征，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-11-1/3-1.png" alt="Alt text" /></p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了Covenant的细节，分析特点，Covenant的可扩展性很高，能够很方便的做二次开发。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

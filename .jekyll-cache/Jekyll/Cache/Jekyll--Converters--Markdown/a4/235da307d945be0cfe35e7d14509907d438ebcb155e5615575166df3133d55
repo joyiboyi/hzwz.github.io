@@ -1,0 +1,325 @@
+I"�3<h2 id="0x00-前言">0x00 前言</h2>
+<hr />
+
+<p>2017年11月9日维基解密公布一个代号为Vault8的文档，包含服务器远程控制工具Hive的源代码和开发文档。开发文档中的框架图显示Hive支持流量分发功能，若流量有效，转发至Honeycomb服务器，若流量存在问题，转发至Cover Server。
+本文仅站在技术研究的角度，尝试使用Apache的mod_rewrite模块实现http流量分发，完成相同的目标。</p>
+
+<p>标记后的框架图如下：</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-16/0.png" alt="Alt text" /></p>
+
+<p>之前的分析文章：</p>
+
+<p><a href="https://3gstudent.github.io/CIA-Hive%E6%B5%8B%E8%AF%95%E6%8C%87%E5%8D%97-%E6%BA%90%E4%BB%A3%E7%A0%81%E8%8E%B7%E5%8F%96%E4%B8%8E%E7%AE%80%E8%A6%81%E5%88%86%E6%9E%90">《CIA Hive测试指南——源代码获取与简要分析》</a></p>
+
+<h2 id="0x01-简介">0x01 简介</h2>
+<hr />
+
+<p>本文将要介绍以下内容：</p>
+
+<ul>
+  <li>Windows系统下安装配置Apache mod_rewrite</li>
+  <li>Ubuntu系统下安装配置Apache mod_rewrite</li>
+  <li>规则配置技巧与实例</li>
+  <li>根据判定条件实现http流量分发</li>
+</ul>
+
+<h2 id="0x02-windows系统下安装配置apache-mod_rewrite">0x02 Windows系统下安装配置Apache mod_rewrite</h2>
+<hr />
+
+<h3 id="1下载apache">1、下载Apache</h3>
+
+<p>地址：</p>
+
+<p>http://httpd.apache.org/download.cgi</p>
+
+<p>选择需要的版本，测试版本Apache 2.4.33，下载地址：</p>
+
+<p>https://www.apachehaus.com/cgi-bin/download.plx?dli=wUWZ1allWW00kej9iUG5UeJVlUGRVYRdnWzQmW</p>
+
+<h3 id="2安装">2、安装</h3>
+
+<p>解压后通过命令行安装：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd \Apace24\bin
+httpd -k install
+</code></pre></div></div>
+
+<h3 id="3开启mod_rewrite模块">3、开启mod_rewrite模块</h3>
+
+<p>编辑文件： <code class="language-plaintext highlighter-rouge">\Apace24\conf\httpd.conf</code></p>
+
+<p>找到<code class="language-plaintext highlighter-rouge">#LoadModule rewrite_module modules/mod_rewrite.so</code>，去掉<code class="language-plaintext highlighter-rouge">#</code></p>
+
+<h3 id="4开启支持htaccess文件">4、开启支持.htaccess文件</h3>
+
+<p>编辑文件： <code class="language-plaintext highlighter-rouge">\Apace24\conf\httpd.conf</code></p>
+
+<p>定位如下位置：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>DocumentRoot "${SRVROOT}/htdocs"
+&lt;Directory "${SRVROOT}/htdocs"&gt;
+    #
+    # Possible values for the Options directive are "None", "All",
+    # or any combination of:
+    #   Indexes Includes FollowSymLinks SymLinksifOwnerMatch ExecCGI MultiViews
+    #
+    # Note that "MultiViews" must be named *explicitly* --- "Options All"
+    # doesn't give it to you.
+    #
+    # The Options directive is both complicated and important.  Please see
+    # http://httpd.apache.org/docs/2.4/mod/core.html#options
+    # for more information.
+    #
+    Options Indexes FollowSymLinks
+
+    #
+    # AllowOverride controls what directives may be placed in .htaccess files.
+    # It can be "All", "None", or any combination of the keywords:
+    #   Options FileInfo AuthConfig Limit
+    #
+    AllowOverride All
+
+    #
+    # Controls who can get stuff from this server.
+    #
+    Require all granted
+&lt;/Directory&gt;
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">AllowOverride None</code>改为<code class="language-plaintext highlighter-rouge">AllowOverride All</code></p>
+
+<h3 id="5编写htaccess文件配置规则">5、编写.htaccess文件，配置规则</h3>
+
+<p>保存路径为<code class="language-plaintext highlighter-rouge">\Apace24\htdocs\</code></p>
+
+<p>测试规则为将1.html重定向到2.html，具体内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;IfModule mod_rewrite.c&gt;
+RewriteEngine on
+RewriteRule 1.html 2.html
+&lt;/IfModule&gt;
+</code></pre></div></div>
+
+<p>使用记事本打开，另存为文件，文件名为<code class="language-plaintext highlighter-rouge">".htaccess"</code></p>
+
+<p><strong>注：</strong></p>
+
+<p>文件名包含引号<code class="language-plaintext highlighter-rouge">"</code>，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-16/2-1.png" alt="Alt text" /></p>
+
+<p>2.html保存在<code class="language-plaintext highlighter-rouge">\Apace24\htdocs\</code>，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;html&gt;
+&lt;body&gt;
+True page
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre></div></div>
+
+<h3 id="6开启apache服务">6、开启apache服务</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>httpd.exe -k start
+</code></pre></div></div>
+
+<h3 id="7测试">7、测试</h3>
+
+<p>访问<code class="language-plaintext highlighter-rouge">http://127.0.0.1/1.html</code></p>
+
+<p>返回内容<code class="language-plaintext highlighter-rouge">True page</code>，代表网页被重定向到了2.html</p>
+
+<h3 id="8补充">8、补充</h3>
+
+<p>apache的日志路径为<code class="language-plaintext highlighter-rouge">\Apache24\logs</code></p>
+
+<p>mod_rewrite的日志保存在<code class="language-plaintext highlighter-rouge">error.log</code></p>
+
+<p>文件<code class="language-plaintext highlighter-rouge">\Apace24\conf\httpd.conf</code>可指定日志记录等级</p>
+
+<h2 id="0x03-ubuntu系统下安装配置apache-mod_rewrite">0x03 Ubuntu系统下安装配置Apache mod_rewrite</h2>
+<hr />
+
+<h3 id="1下载安装">1、下载安装</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo apt-get install apache2
+</code></pre></div></div>
+
+<h3 id="2开启mod_rewrite模块">2、开启mod_rewrite模块</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo a2enmod rewrite
+</code></pre></div></div>
+
+<h3 id="3开启支持htaccess文件">3、开启支持.htaccess文件</h3>
+
+<p>编辑文件： <code class="language-plaintext highlighter-rouge">/etc/apache2/apache2.conf</code></p>
+
+<p>定位如下位置：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;Directory /var/www/&gt;
+        Options Indexes FollowSymLinks
+        AllowOverride None
+        Require all granted
+&lt;/Directory&gt;
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">AllowOverride None</code>改为<code class="language-plaintext highlighter-rouge">AllowOverride All</code></p>
+
+<h3 id="4编写htaccess文件配置规则">4、编写.htaccess文件，配置规则</h3>
+
+<p>保存路径为<code class="language-plaintext highlighter-rouge">\var\www\html\</code></p>
+
+<p>测试规则为将1.html重定向到2.html，具体内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;IfModule mod_rewrite.c&gt;
+RewriteEngine on
+RewriteRule 1.html 2.html
+&lt;/IfModule&gt;
+</code></pre></div></div>
+
+<p>2.html保存在<code class="language-plaintext highlighter-rouge">\var\www\html\</code>，内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;html&gt;
+&lt;body&gt;
+True page
+&lt;/body&gt;
+&lt;/html&gt;
+</code></pre></div></div>
+
+<h3 id="5开启apache服务">5、开启apache服务</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo /etc/init.d/apache2 restart
+</code></pre></div></div>
+
+<h3 id="6测试">6、测试</h3>
+
+<p>访问<code class="language-plaintext highlighter-rouge">http:/IP/1.html</code></p>
+
+<p>返回内容<code class="language-plaintext highlighter-rouge">True page</code>，代表网页被重定向到了2.html</p>
+
+<h3 id="7补充">7、补充</h3>
+
+<p>apache的日志路径为<code class="language-plaintext highlighter-rouge">/var/log/apache2/</code></p>
+
+<p>mod_rewrite的日志保存在error.log</p>
+
+<p>文件<code class="language-plaintext highlighter-rouge">/etc/apache2/apache2.conf</code>可指定日志记录等级</p>
+
+<h2 id="0x04-规则配置技巧与实例">0x04 规则配置技巧与实例</h2>
+<hr />
+
+<h3 id="1将所有网页重定向至-httpswwwbaiducom">1、将所有网页重定向至 <code class="language-plaintext highlighter-rouge">https://www.baidu.com</code></h3>
+
+<p>.htaccess文件内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;IfModule mod_rewrite.c&gt;
+RewriteEngine on
+RewriteRule . https://www.baidu.com
+&lt;/IfModule&gt;
+</code></pre></div></div>
+
+<h3 id="2过滤request-header">2、过滤Request Header</h3>
+
+<h4 id="1-user-agent">(1) User Agent</h4>
+
+<p>只针对特定User Agent的请求进行重定向</p>
+
+<p><strong>实例：</strong></p>
+
+<p>使用Mac下的Safari浏览器访问1.html，将其重定向到2.html</p>
+
+<p>.htaccess文件内容如下：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;IfModule mod_rewrite.c&gt;
+RewriteEngine on
+RewriteCond "%{HTTP_USER_AGENT}" "Macintosh; Intel Mac OS X 10_9_3" [NC]
+RewriteRule 1.html 2.html
+&lt;/IfModule&gt;
+</code></pre></div></div>
+
+<p>参数说明：</p>
+
+<p><code class="language-plaintext highlighter-rouge">RewriteCond "%{HTTP_USER_AGENT}" "Macintosh; Intel Mac OS X 10_9_3" [NC]</code>代表判定条件，判断<code class="language-plaintext highlighter-rouge">HTTP_USER_AGENT</code>是否包含字符串<code class="language-plaintext highlighter-rouge">"Macintosh; Intel Mac OS X 10_9_3"</code>(大小写不敏感)</p>
+
+<p>NC: 字符比较，大小写不敏感</p>
+
+<p>详细参数说明可参考：</p>
+
+<p>https://httpd.apache.org/docs/current/mod/mod_rewrite.html#rewritecond</p>
+
+<p><strong>1.使用curl进行测试</strong></p>
+
+<p>模拟Chrome浏览器：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -A "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36" http://192.168.62.137/1.html
+</code></pre></div></div>
+
+<p>并没重定向，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-16/3-1.png" alt="Alt text" /></p>
+
+<p>模拟Mac Safari浏览器：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.75.14 (KHTML, like Gecko) Version/7.0.3 Safari/7046A194A" http://192.168.62.137/1.html
+</code></pre></div></div>
+
+<p>网页重定向，获得2.html的内容，如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-16/3-2.png" alt="Alt text" /></p>
+
+<p><strong>2.Chrome浏览器修改User Agent的方法</strong></p>
+
+<p>访问页面，<code class="language-plaintext highlighter-rouge">F12</code> -&gt; <code class="language-plaintext highlighter-rouge">More tools</code> -&gt; <code class="language-plaintext highlighter-rouge">Network conditions</code>，选择User agent 为 <code class="language-plaintext highlighter-rouge">Safari —— Mac</code></p>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-16/3-3.png" alt="Alt text" /></p>
+
+<h4 id="2-peferer">(2) Peferer</h4>
+
+<p>只针对特定来源的请求进行重定向</p>
+
+<p><strong>实例：</strong></p>
+
+<p>如果来源为test.com，访问1.html时将其重定向到2.html</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;IfModule mod_rewrite.c&gt;
+RewriteEngine on
+RewriteCond "%{HTTP_REFERER}" "test.com" [NC]
+RewriteRule 1.html 2.html
+&lt;/IfModule&gt;
+</code></pre></div></div>
+
+<p>使用curl进行测试：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>curl -e "test.com" http://192.168.62.137/1.html
+</code></pre></div></div>
+
+<h4 id="3-其他可供选择的过滤条件">(3) 其他可供选择的过滤条件</h4>
+
+<p>如下图</p>
+
+<p><img src="https://raw.githubusercontent.com/3gstudent/BlogPic/master/2018-4-16/3-4.png" alt="Alt text" /></p>
+
+<p><strong>注：</strong></p>
+
+<p>图片来源于https://httpd.apache.org/docs/current/mod/mod_rewrite.html#rewritecond</p>
+
+<p><strong>补充：</strong></p>
+
+<p>Jeff Dimmock在他的博客分享了使用mod_rewrite配置规则的心得，值得学习，地址如下：</p>
+
+<p>https://bluescreenofjeff.com/tags</p>
+
+<h2 id="0x05-小结">0x05 小结</h2>
+<hr />
+
+<p>本文介绍了Windows系统和Ubuntu系统下安装配置Apache mod_rewrite的方法，分享配置技巧与实例，在技术研究的角度实现了根据请求条件进行http流量分发。</p>
+
+<p>下篇文章将要介绍https的流量分发实现。</p>
+
+<hr />
+
+<p><a href="https://github.com/3gstudent/feedback/issues/new">LEAVE A REPLY</a></p>
+
+:ET
